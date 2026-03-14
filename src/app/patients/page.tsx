@@ -1,0 +1,122 @@
+"use client";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { getPatients, deletePatient } from "@/lib/tauri";
+import { useState } from "react";
+import { Search, Filter, Download, Eye, Edit, Trash2, Plus } from "lucide-react";
+import { toast } from "sonner";
+import type { PatientStatus } from "@/types";
+
+const STATUS_BADGE: Record<PatientStatus, string> = {
+  Active:"badge-green", Admitted:"badge-yellow", Discharged:"badge-gray", Critical:"badge-red", OPD:"badge-blue",
+};
+const AVATAR_COLORS = ["bg-accent/20 text-accent","bg-purple/20 text-purple","bg-success/20 text-success","bg-danger/20 text-danger","bg-warning/20 text-warning"];
+const initials = (n: string) => n.split(" ").slice(0,2).map(w=>w[0]).join("").toUpperCase();
+
+export default function PatientsPage() {
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("");
+  const qc = useQueryClient();
+
+  const { data: patients = [], isLoading } = useQuery({
+    queryKey: ["patients", search, status],
+    queryFn: () => getPatients(search || undefined, status || undefined),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: deletePatient,
+    onSuccess: () => { qc.invalidateQueries({ queryKey:["patients"] }); toast.success("Patient deleted"); },
+    onError: () => toast.error("Delete failed"),
+  });
+
+  return (
+    <div>
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">Patient Records</h1>
+          <p className="page-subtitle">{patients.length} patients registered</p>
+        </div>
+        <div className="flex gap-2.5">
+          <button className="btn btn-ghost"><Download size={13} />Export CSV</button>
+          <button className="btn btn-primary"><Plus size={14} />Add Patient</button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-5 gap-3 mb-5">
+        {[
+          { label:"Total", val:patients.length, c:"text-white" },
+          { label:"Active", val:patients.filter(p=>p.status==="Active").length, c:"text-success" },
+          { label:"Admitted", val:patients.filter(p=>p.status==="Admitted").length, c:"text-warning" },
+          { label:"Critical", val:patients.filter(p=>p.status==="Critical").length, c:"text-danger" },
+          { label:"OPD", val:patients.filter(p=>p.status==="OPD").length, c:"text-accent" },
+        ].map(s => (
+          <div key={s.label} className="card px-4 py-3">
+            <div className={`font-display font-extrabold text-xl ${s.c}`}>{s.val}</div>
+            <div className="text-[11px] text-subtle">{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex gap-3 mb-4">
+        <div className="flex-1 relative">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-subtle" />
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search by name, phone, patient code…" className="pl-9" />
+        </div>
+        <select value={status} onChange={e=>setStatus(e.target.value)} className="w-40">
+          <option value="">All Status</option>
+          {["Active","Admitted","Discharged","Critical","OPD"].map(s=><option key={s}>{s}</option>)}
+        </select>
+        <button className="btn btn-ghost"><Filter size={13} />More Filters</button>
+      </div>
+
+      <div className="card">
+        {isLoading ? (
+          <div className="py-16 text-center text-muted text-[13px]">Loading patients…</div>
+        ) : patients.length === 0 ? (
+          <div className="py-16 text-center text-muted text-[13px]">No patients found</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="data-table">
+              <thead><tr>
+                <th>Patient</th><th>Code</th><th>Age/Gender</th><th>Blood</th>
+                <th>Department</th><th>Doctor</th><th>Phone</th><th>Insurance</th><th>Status</th><th>Actions</th>
+              </tr></thead>
+              <tbody>
+                {patients.map((p, i) => {
+                  const age = new Date().getFullYear() - new Date(p.dob).getFullYear();
+                  return (
+                    <tr key={p.id}>
+                      <td>
+                        <div className="flex items-center gap-2.5">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[12px] font-bold flex-shrink-0 ${AVATAR_COLORS[i%AVATAR_COLORS.length]}`}>{initials(p.full_name)}</div>
+                          <div>
+                            <div className="font-medium text-white">{p.full_name}</div>
+                            {p.allergies && <div className="text-[10px] text-danger">⚠ Allergies</div>}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="text-subtle text-[12px] font-mono">{p.patient_code}</td>
+                      <td className="text-muted">{age}y / {p.gender[0]}</td>
+                      <td><span className="badge badge-purple">{p.blood_group}</span></td>
+                      <td><span className="badge badge-blue text-[10px]">{p.department}</span></td>
+                      <td className="text-muted text-[12px]">{p.assigned_doctor_name ?? "Unassigned"}</td>
+                      <td className="text-muted text-[12px] font-mono">{p.phone}</td>
+                      <td className="text-muted text-[12px]">{p.insurance_provider ?? "—"}</td>
+                      <td><span className={`badge ${STATUS_BADGE[p.status]}`}>{p.status}</span></td>
+                      <td>
+                        <div className="flex gap-1.5">
+                          <button className="icon-btn"><Eye size={12} /></button>
+                          <button className="icon-btn hover:!text-accent"><Edit size={12} /></button>
+                          <button onClick={() => { if(confirm("Delete patient?")) deleteMut.mutate(p.id); }} className="icon-btn hover:!text-danger"><Trash2 size={12} /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
