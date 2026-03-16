@@ -4,9 +4,14 @@ import { getPrescriptions } from "@/lib/tauri";
 import { useState } from "react";
 import { Plus, Search, Eye, Printer } from "lucide-react";
 import { format, differenceInDays } from "date-fns";
+import { NewPrescriptionModal } from "@/components/modules/NewPrescriptionModal";
+import { PrescriptionPrintView } from "@/components/modules/PrescriptionPrintView";
 
 export default function PrescriptionsPage() {
   const [search, setSearch] = useState("");
+  const [showNewModal, setShowNewModal] = useState(false);
+  const [printRx, setPrintRx] = useState<number | null>(null);
+  const [viewRx, setViewRx] = useState<number | null>(null);
   const { data: rxList = [], isLoading } = useQuery({ queryKey:["prescriptions"], queryFn:()=>getPrescriptions() });
 
   const filtered = rxList.filter(rx =>
@@ -17,7 +22,7 @@ export default function PrescriptionsPage() {
     <div>
       <div className="page-header">
         <div><h1 className="page-title">Prescription Management</h1><p className="page-subtitle">{rxList.length} total prescriptions</p></div>
-        <button className="btn btn-primary"><Plus size={14} />New Prescription</button>
+        <button onClick={() => setShowNewModal(true)} className="btn btn-primary"><Plus size={14} />New Prescription</button>
       </div>
 
       <div className="flex gap-3 mb-5">
@@ -73,8 +78,8 @@ export default function PrescriptionsPage() {
                       <td><span className={`badge ${rx.status==="Active"?"badge-green":rx.status==="Expired"?"badge-gray":"badge-red"}`}>{rx.status}</span></td>
                       <td>
                         <div className="flex gap-1.5">
-                          <button className="icon-btn"><Eye size={12} /></button>
-                          <button className="icon-btn hover:!text-accent"><Printer size={12} /></button>
+                          <button onClick={() => setViewRx(rx.id)} className="icon-btn"><Eye size={12} /></button>
+                          <button onClick={() => setPrintRx(rx.id)} className="icon-btn hover:!text-accent"><Printer size={12} /></button>
                         </div>
                       </td>
                     </tr>
@@ -84,6 +89,10 @@ export default function PrescriptionsPage() {
             </table>
           </div>}
       </div>
+
+      <NewPrescriptionModal open={showNewModal} onClose={() => setShowNewModal(false)} />
+      <PrescriptionPrintView prescriptionId={viewRx ?? 0} open={viewRx !== null} onClose={() => setViewRx(null)} />
+      <PrescriptionPrintView prescriptionId={printRx ?? 0} open={printRx !== null} onClose={() => setPrintRx(null)} />
     </div>
   );
 }

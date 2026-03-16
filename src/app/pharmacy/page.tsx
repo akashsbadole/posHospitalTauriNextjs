@@ -2,9 +2,12 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getInventory, getLowStockItems, updateStock, createInventoryItem } from "@/lib/tauri";
 import { useState } from "react";
-import { Plus, Search, AlertTriangle, TrendingUp, TrendingDown, Package } from "lucide-react";
+import { Plus, Search, AlertTriangle, TrendingUp, TrendingDown, Package, Eye, Edit2 } from "lucide-react";
 import { toast } from "sonner";
 import type { InventoryItem } from "@/types";
+import { NewInventoryModal } from "@/components/modules/NewInventoryModal";
+import { EditInventoryModal } from "@/components/modules/EditInventoryModal";
+import { StockHistoryModal } from "@/components/modules/StockHistoryModal";
 
 const CAT_BADGE: Record<InventoryItem["category"],string> = {
   Medicine:"badge-green", Consumable:"badge-blue", Equipment:"badge-purple",
@@ -15,6 +18,9 @@ export default function PharmacyPage() {
   const [search, setSearch] = useState("");
   const [cat, setCat] = useState("");
   const [tab, setTab] = useState<"all"|"low">("all");
+  const [showNewModal, setShowNewModal] = useState(false);
+  const [editItem, setEditItem] = useState<InventoryItem | null>(null);
+  const [historyItem, setHistoryItem] = useState<{id: number; name: string} | null>(null);
   const qc = useQueryClient();
 
   const { data: items = [], isLoading } = useQuery({ queryKey:["inventory",cat], queryFn:()=>getInventory(cat as InventoryItem["category"]||undefined) });
@@ -34,7 +40,7 @@ export default function PharmacyPage() {
         <div><h1 className="page-title">Pharmacy & Inventory</h1><p className="page-subtitle">{items.length} items tracked</p></div>
         <div className="flex gap-2.5">
           <button className="btn btn-ghost"><Package size={13} />Reorder All Low</button>
-          <button className="btn btn-primary"><Plus size={14} />Add Item</button>
+          <button onClick={() => setShowNewModal(true)} className="btn btn-primary"><Plus size={14} />Add Item</button>
         </div>
       </div>
 
@@ -124,6 +130,8 @@ export default function PharmacyPage() {
                       <td className="text-muted text-[12px]">{item.location ?? "—"}</td>
                       <td>
                         <div className="flex gap-1.5">
+                          <button onClick={() => setHistoryItem({ id: item.id, name: item.name })} className="icon-btn" title="View history"><Eye size={12} /></button>
+                          <button onClick={() => setEditItem(item)} className="icon-btn hover:!text-accent" title="Edit item"><Edit2 size={12} /></button>
                           <button onClick={()=>stockMut.mutate({id:item.id,qty:10,op:"add"})} className="icon-btn hover:!text-success" title="Add stock"><TrendingUp size={12} /></button>
                           <button onClick={()=>stockMut.mutate({id:item.id,qty:1,op:"subtract"})} className="icon-btn hover:!text-danger" title="Use stock"><TrendingDown size={12} /></button>
                         </div>
@@ -135,6 +143,10 @@ export default function PharmacyPage() {
             </table>
           </div>}
       </div>
+
+      <NewInventoryModal open={showNewModal} onClose={() => setShowNewModal(false)} />
+      <EditInventoryModal item={editItem} open={!!editItem} onClose={() => setEditItem(null)} />
+      {historyItem && <StockHistoryModal itemId={historyItem.id} itemName={historyItem.name} open={!!historyItem} onClose={() => setHistoryItem(null)} />}
     </div>
   );
 }

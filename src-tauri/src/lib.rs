@@ -24,7 +24,10 @@ pub fn run() {
             let pool = db::create_pool(&db_path.to_str().unwrap())
                 .expect("Failed to create DB pool");
 
-            db::run_migrations(&pool).expect("Failed to run migrations");
+            if let Err(e) = db::run_migrations(&pool) {
+                eprintln!("[ERR] Migration failed: {}", e);
+                panic!("Migration failed: {}", e);
+            }
 
             app.manage(AppState { pool });
             Ok(())
@@ -77,8 +80,10 @@ pub fn run() {
             commands::get_beds,
             commands::admit_patient,
             commands::discharge_patient,
+            commands::transfer_patient,
             commands::update_bed_status,
             commands::create_ward,
+            commands::create_ward_with_beds,
             // Billing
             commands::get_invoices,
             commands::get_invoice_by_id,
@@ -101,6 +106,84 @@ pub fn run() {
             // Sync
             commands::sync_to_cloud,
             commands::get_sync_status,
+            // Settings
+            commands::get_setting,
+            commands::set_setting,
+            commands::get_all_settings,
+            commands::backup_database,
+            // Users & Auth
+            commands::create_user,
+            commands::get_users,
+            commands::login_user,
+            commands::update_user_status,
+            commands::delete_user,
+            // Tax Settings
+            commands::get_tax_settings,
+            commands::create_tax_setting,
+            // Revenue Cycle - Payment Batches
+            commands::get_payment_batches,
+            commands::create_payment_batch,
+            commands::add_payment_batch_item,
+            // WhatsApp & SMS
+            commands::get_message_templates,
+            commands::create_message_template,
+            commands::send_message,
+            commands::get_message_logs,
+            // Payroll & HR
+            commands::get_employees,
+            commands::create_employee,
+            commands::get_leave_requests,
+            commands::create_leave_request,
+            commands::approve_leave_request,
+            commands::get_attendance,
+            commands::mark_attendance,
+            // Asset Management
+            commands::get_asset_categories,
+            commands::create_asset_category,
+            commands::get_assets,
+            commands::create_asset,
+            commands::get_asset_maintenance,
+            commands::create_asset_maintenance,
+            // OPD Queue
+            commands::get_opd_tokens,
+            commands::create_opd_token,
+            commands::update_token_status,
+            // Discharge Summary
+            commands::get_discharge_summaries,
+            commands::create_discharge_summary,
+            // Operation Theatre
+            commands::get_ot_schedules,
+            commands::create_ot_schedule,
+            commands::get_ot_theatres,
+            // Emergency / ER
+            commands::get_emergency_cases,
+            commands::create_emergency_case,
+            commands::update_emergency_status,
+            // Blood Bank
+            commands::get_blood_donors,
+            commands::create_blood_donor,
+            commands::get_blood_inventory,
+            commands::create_blood_inventory,
+            commands::get_blood_requests,
+            commands::create_blood_request,
+            // Ambulance
+            commands::get_ambulances,
+            commands::create_ambulance,
+            commands::get_ambulance_calls,
+            commands::create_ambulance_call,
+            commands::update_ambulance_status,
+            // Expense Management
+            commands::get_expense_categories,
+            commands::create_expense_category,
+            commands::get_expenses,
+            commands::create_expense,
+            // Notifications
+            commands::get_notifications,
+            commands::create_notification,
+            commands::mark_notification_read,
+            // Role Permissions
+            commands::get_role_permissions,
+            commands::update_role_permission,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

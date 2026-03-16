@@ -1,11 +1,13 @@
 "use client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getWards, getBeds, dischargePatient, updateBedStatus } from "@/lib/tauri";
+import { getWards, getBeds, dischargePatient, updateBedStatus, transferPatient } from "@/lib/tauri";
 import { useState } from "react";
 import { Plus, LogOut } from "lucide-react";
 import { clsx } from "clsx";
 import { toast } from "sonner";
 import type { Bed, BedStatus } from "@/types";
+import { AdmitPatientModal } from "@/components/modules/AdmitPatientModal";
+import { NewWardModal } from "@/components/modules/NewWardModal";
 
 const BED_COLOR: Record<BedStatus,string> = {
   Occupied:"bg-danger/15 border-danger/30 text-danger",
@@ -17,6 +19,9 @@ const BED_COLOR: Record<BedStatus,string> = {
 export default function WardsPage() {
   const [selectedWard, setSelectedWard] = useState<number|null>(null);
   const [hoveredBed, setHoveredBed] = useState<Bed|null>(null);
+  const [showAdmitModal, setShowAdmitModal] = useState(false);
+  const [showNewWardModal, setShowNewWardModal] = useState(false);
+  const [transferFrom, setTransferFrom] = useState<Bed | null>(null);
   const qc = useQueryClient();
 
   const { data: wards = [] } = useQuery({ queryKey:["wards"], queryFn: getWards });
@@ -27,6 +32,12 @@ export default function WardsPage() {
     onSuccess: () => { qc.invalidateQueries({queryKey:["beds"]}); toast.success("Patient discharged"); },
   });
 
+  const transferMut = useMutation({
+    mutationFn: ({from, to}: {from: number; to: number}) => transferPatient(from, to),
+    onSuccess: () => { qc.invalidateQueries({queryKey:["beds"]}); toast.success("Patient transferred"); setTransferFrom(null); },
+    onError: () => toast.error("Transfer failed"),
+  });
+
   const activeWard = wards.find(w=>w.id===selectedWard) ?? wards[0];
   const occupied = beds.filter(b=>b.status==="Occupied").length;
   const available = beds.filter(b=>b.status==="Available").length;
@@ -35,7 +46,10 @@ export default function WardsPage() {
     <div>
       <div className="page-header">
         <div><h1 className="page-title">Ward & Bed Management</h1><p className="page-subtitle">{occupied} occupied, {available} available</p></div>
-        <button className="btn btn-primary"><Plus size={14} />Add Ward</button>
+        <div className="flex gap-2">
+          <button onClick={() => setShowNewWardModal(true)} className="btn btn-ghost"><Plus size={14} />Add Ward</button>
+          <button onClick={() => setShowAdmitModal(true)} className="btn btn-primary"><Plus size={14} />Admit Patient</button>
+        </div>
       </div>
 
       {/* Summary */}
@@ -93,11 +107,18 @@ export default function WardsPage() {
                       </div>
                     )}
                     {hoveredBed?.id === bed.id && bed.status === "Occupied" && (
-                      <button onClick={()=>dischargeMut.mutate(bed.id)}
-                        className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-danger flex items-center justify-center"
-                        title="Discharge">
-                        <LogOut size={10} className="text-white" />
-                      </button>
+                      <div className="absolute -top-2 -right-2 flex gap-1">
+                        <button onClick={()=>setTransferFrom(bed)}
+                          className="w-5 h-5 rounded-full bg-accent flex items-center justify-center"
+                          title="Transfer">
+                          <LogOut size={10} className="text-white rotate-90" />
+                        </button>
+                        <button onClick={()=>dischargeMut.mutate(bed.id)}
+                          className="w-5 h-5 rounded-full bg-danger flex items-center justify-center"
+                          title="Discharge">
+                          <LogOut size={10} className="text-white" />
+                        </button>
+                      </div>
                     )}
                   </div>
                 ))}
@@ -127,6 +148,37 @@ export default function WardsPage() {
           )}
         </div>
       </div>
+
+      <AdmitPatientModal open={showAdmitModal} onClose={() => setShowAdmitModal(false)} />
+      <NewWardModal open={showNewWardModal} onClose={() => setShowNewWardModal(false)} />
+      
+      {transferFrom && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="bg-surface border border-border2 rounded-2xl w-[400px] shadow-card p-6">
+            <h3 className="font-display font-bold text-lg mb-4">Transfer Patient</h3>
+            <p className="text-sm text-muted mb-4">Moving {transferFrom.patient_name} from Bed {transferFrom.bed_number}</p>
+            <div className="mb-4">
+              <label className="form-label">Select Target Bed</label>
+              <select 
+                className="w-full"
+                onChange={(e) => {
+                  if (e.target.value) {
+                    transferMut.mutate({ from: transferFrom.id, to: parseInt(e.target.value) });
+                  }
+                }}
+              >
+                <option value="">Choose available bed...</option>
+                {beds.filter(b => b.status === "Available" && b.ward_id === transferFrom.ward_id).map(b => (
+                  <option key={b.id} value={b.id}>Bed {b.bed_number}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setTransferFrom(null)} className="btn btn-ghost">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

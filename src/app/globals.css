@@ -58,6 +58,10 @@ select option{background:var(--surface2)}
   .form-group{@apply flex flex-col gap-0}
   .form-error{@apply text-[11px] text-danger mt-1}
 
+  .input{@apply w-full px-3 py-2 bg-surface2 border border-border rounded-lg text-[13px] text-white placeholder-subtle focus:outline-none focus:border-accent transition-colors}
+  .select{@apply w-full px-3 py-2 bg-surface2 border border-border rounded-lg text-[13px] text-white focus:outline-none focus:border-accent transition-colors cursor-pointer}
+  .textarea{@apply w-full px-3 py-2 bg-surface2 border border-border rounded-lg text-[13px] text-white placeholder-subtle focus:outline-none focus:border-accent transition-colors resize-none}
+
   .page-header{@apply flex items-center justify-between mb-6}
   .page-title{@apply font-display font-bold text-xl text-white}
   .page-subtitle{@apply text-sm text-muted mt-0.5}

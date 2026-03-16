@@ -6,6 +6,8 @@ import {
   LayoutDashboard, Users, CalendarDays, Pill, FlaskConical,
   BedDouble, UserCog, Package, CreditCard, Shield,
   BarChart3, FileText, Settings, Activity, ChevronLeft,
+  QrCode, MessageSquare, Wallet, Briefcase, MonitorPlay,
+  Scissors, AlertTriangle, Droplet, Car, DollarSign, Bell,
 } from "lucide-react";
 import { useAppStore } from "@/store";
 
@@ -19,15 +21,28 @@ const NAV = [
     { href:"/appointments",  icon:CalendarDays, label:"Appointments",        badge:12 },
     { href:"/prescriptions", icon:Pill,         label:"Prescriptions" },
     { href:"/lab",           icon:FlaskConical, label:"Lab & Diagnostics",   badge:5 },
+    { href:"/discharge",     icon:FileText,     label:"Discharge Summary" },
+    { href:"/opd-queue",    icon:MonitorPlay,  label:"OPD Queue" },
+    { href:"/emergency",     icon:AlertTriangle,label:"Emergency / ER" },
+    { href:"/ot",            icon:Scissors,     label:"Operation Theatre" },
   ]},
   { section: "Operations", items: [
     { href:"/wards",    icon:BedDouble, label:"Wards & Beds" },
     { href:"/staff",    icon:UserCog,   label:"Doctors & Staff" },
     { href:"/pharmacy", icon:Package,   label:"Pharmacy & Inventory" },
+    { href:"/assets",   icon:QrCode,    label:"Asset Management" },
+    { href:"/blood-bank", icon:Droplet,  label:"Blood Bank" },
+    { href:"/ambulance",   icon:Car,      label:"Ambulance" },
   ]},
   { section: "Finance", items: [
-    { href:"/billing",   icon:CreditCard, label:"Billing & Invoice" },
-    { href:"/insurance", icon:Shield,     label:"Insurance Claims", badge:2 },
+    { href:"/billing",     icon:CreditCard,   label:"Billing & Invoice" },
+    { href:"/insurance",   icon:Shield,       label:"Insurance Claims", badge:2 },
+    { href:"/revenue",     icon:Wallet,       label:"Revenue Cycle" },
+    { href:"/expenses",    icon:DollarSign,   label:"Expenses" },
+  ]},
+  { section: "HR & Payroll", items: [
+    { href:"/hr",          icon:Briefcase,    label:"Payroll & HR" },
+    { href:"/messages",    icon:MessageSquare, label:"SMS & WhatsApp" },
   ]},
   { section: "System", items: [
     { href:"/audit",    icon:FileText, label:"Audit Logs" },

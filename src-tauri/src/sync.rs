@@ -3,20 +3,29 @@ use crate::db::DbPool;
 use crate::models::{SyncResult, SyncStatus};
 use anyhow::Result;
 use rusqlite::params;
+use std::env;
 
-/// Push pending sync_queue entries to Neon PostgreSQL.
-/// In production this uses the NEON_DATABASE_URL env variable.
+fn get_neon_url() -> Option<String> {
+    env::var("NEON_DATABASE_URL").ok().or_else(|| {
+        std::fs::read_to_string(".env")
+            .ok()
+            .and_then(|content| {
+                content
+                    .lines()
+                    .find(|line| line.starts_with("NEON_DATABASE_URL="))
+                    .map(|line| line.trim_start_matches("NEON_DATABASE_URL=").to_string())
+            })
+    })
+}
+
 pub async fn sync_to_cloud(pool: &DbPool) -> Result<SyncResult> {
-    let conn = pool.get()?;
-
-    // Fetch all unsynced entries
-    let mut stmt = conn.prepare(
-        "SELECT id, operation, table_name, record_id, payload
-         FROM sync_queue WHERE synced = 0 ORDER BY created_at LIMIT 500",
-    )?;
-
-    let entries: Vec<(i64, String, String, i64, String)> = stmt
-        .query_map([], |row| {
+    let entries: Vec<(i64, String, String, i64, String)> = {
+        let conn = pool.get()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, operation, table_name, record_id, payload
+             FROM sync_queue WHERE synced = 0 ORDER BY created_at LIMIT 500",
+        )?;
+        let result: Vec<_> = stmt.query_map([], |row| {
             Ok((
                 row.get::<_, i64>(0)?,
                 row.get::<_, String>(1)?,
@@ -27,38 +36,64 @@ pub async fn sync_to_cloud(pool: &DbPool) -> Result<SyncResult> {
         })?
         .filter_map(|r| r.ok())
         .collect();
+        result
+    };
 
     let total = entries.len() as i64;
     let mut errors = 0i64;
 
-    // TODO: Replace with actual Neon connection when NEON_DATABASE_URL is set.
-    // Example:
-    //   let (client, connection) = tokio_postgres::connect(&neon_url, tokio_postgres::NoTls).await?;
-    //   tokio::spawn(async move { let _ = connection.await; });
-    //   for entry in &entries {
-    //       match entry.1.as_str() {
-    //           "INSERT" => { client.execute(&format!("..."), &[]).await?; }
-    //           "UPDATE" => { ... }
-    //           "DELETE" => { ... }
-    //       }
-    //   }
+    if let Some(neon_url) = get_neon_url() {
+        match tokio_postgres::connect(&neon_url, tokio_postgres::NoTls).await {
+            Ok((client, connection)) => {
+                tokio::spawn(async move {
+                    if let Err(e) = connection.await {
+                        log::error!("Neon connection error: {}", e);
+                    }
+                });
 
-    // Mark all as synced (simulated for now)
-    for (id, _, _, _, _) in &entries {
-        conn.execute("UPDATE sync_queue SET synced = 1 WHERE id = ?1", params![id])?;
+                for (id, operation, table, record_id, payload) in &entries {
+                    let sql = match operation.as_str() {
+                        "INSERT" => format!(
+                            "INSERT INTO {} (id, data) VALUES ({}, '{}'::jsonb) ON CONFLICT DO NOTHING",
+                            table, record_id, payload.replace("'", "''")
+                        ),
+                        "UPDATE" => format!(
+                            "UPDATE {} SET data = '{}'::jsonb, updated_at = NOW() WHERE id = {}",
+                            table, payload.replace("'", "''"), record_id
+                        ),
+                        "DELETE" => format!("DELETE FROM {} WHERE id = {}", table, record_id),
+                        _ => continue,
+                    };
+
+                    match client.execute(&sql, &[]).await {
+                        Ok(_) => {}
+                        Err(e) => {
+                            log::error!("Sync error for {} {}: {}", operation, id, e);
+                            errors += 1;
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                log::warn!("Could not connect to Neon: {}", e);
+            }
+        }
     }
 
-    // Record last sync time
-    conn.execute(
-        "INSERT OR REPLACE INTO audit_logs (user_name, action, entity, details)
-         VALUES ('System', 'Cloud sync completed', 'sync', ?1)",
-        params![format!("Synced {} records", total)],
-    )?;
+    {
+        let conn = pool.get()?;
+        for (id, _, _, _, _) in &entries {
+            let _ = conn.execute("UPDATE sync_queue SET synced = 1 WHERE id = ?1", params![id]);
+        }
 
-    Ok(SyncResult {
-        synced: total,
-        errors,
-    })
+        conn.execute(
+            "INSERT INTO audit_logs (user_name, action, entity, details)
+             VALUES ('System', 'Cloud sync completed', 'sync', ?1)",
+            params![format!("Synced {} records, {} errors", total, errors)],
+        )?;
+    }
+
+    Ok(SyncResult { synced: total, errors })
 }
 
 pub fn get_sync_status(pool: &DbPool) -> Result<SyncStatus> {
@@ -79,7 +114,6 @@ pub fn get_sync_status(pool: &DbPool) -> Result<SyncStatus> {
     Ok(SyncStatus { last_sync, pending })
 }
 
-/// Queue a change for cloud sync
 pub fn queue_sync(pool: &DbPool, operation: &str, table: &str, record_id: i64, payload: &str) {
     if let Ok(conn) = pool.get() {
         let _ = conn.execute(

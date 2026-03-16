@@ -1,16 +1,18 @@
 "use client";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getDashboardStats, getRecentActivity, getAppointments, getLowStockItems, getDueRefillRx } from "@/lib/tauri";
-import { AlertTriangle, TrendingUp, TrendingDown } from "lucide-react";
+import { sendLowStockNotification } from "@/lib/notifications";
+import { AlertTriangle, TrendingUp, TrendingDown, RefreshCw, Clock } from "lucide-react";
 import { format } from "date-fns";
+import { useState, useEffect } from "react";
 import type { DashboardStats } from "@/types";
 
-function StatCard({ icon, value, label, change, trend, accent, delay }: {
+function StatCard({ icon, value, label, change, trend, accent, delay, href }: {
   icon: string; value: string | number; label: string;
-  change?: string; trend?: "up"|"down"; accent: string; delay: string;
+  change?: string; trend?: "up"|"down"; accent: string; delay: string; href?: string;
 }) {
-  return (
-    <div className={`stat-card anim-fade-up ${delay}`}>
+  const content = (
+    <div className={`stat-card anim-fade-up ${delay} cursor-pointer hover:border-accent/30`}>
       <div className={`absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-current to-transparent ${accent}`} />
       <div className={`absolute -top-5 -right-5 w-20 h-20 rounded-full blur-2xl anim-pulse-glow`} style={{ background: "currentColor", opacity: 0.07 }} />
       <div className="text-xl mb-3">{icon}</div>
@@ -23,6 +25,11 @@ function StatCard({ icon, value, label, change, trend, accent, delay }: {
       )}
     </div>
   );
+  
+  if (href) {
+    return <a href={href}>{content}</a>;
+  }
+  return content;
 }
 
 function QuickStat({ icon, val, label }: { icon: string; val: number; label: string }) {
@@ -39,11 +46,38 @@ function QuickStat({ icon, val, label }: { icon: string; val: number; label: str
 
 export default function DashboardPage() {
   const today = format(new Date(), "yyyy-MM-dd");
-  const { data: stats } = useQuery<DashboardStats>({ queryKey: ["dashboard-stats"], queryFn: getDashboardStats });
+  const qc = useQueryClient();
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  
+  const { data: stats, isFetching: loadingStats } = useQuery<DashboardStats>({ queryKey: ["dashboard-stats"], queryFn: getDashboardStats });
   const { data: activity = [] } = useQuery({ queryKey: ["recent-activity"], queryFn: () => getRecentActivity(8) });
   const { data: appts = [] } = useQuery({ queryKey: ["appointments", today], queryFn: () => getAppointments(today) });
   const { data: lowStock = [] } = useQuery({ queryKey: ["low-stock"], queryFn: getLowStockItems });
   const { data: rxDue = [] } = useQuery({ queryKey: ["rx-due-refill"], queryFn: getDueRefillRx });
+
+  useEffect(() => {
+    if (!loadingStats && (stats || activity.length > 0)) {
+      setLastUpdated(new Date());
+    }
+  }, [loadingStats, stats, activity]);
+
+  useEffect(() => {
+    if (lowStock.length > 0) {
+      sendLowStockNotification();
+    }
+  }, [lowStock]);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
+    await qc.invalidateQueries({ queryKey: ["recent-activity"] });
+    await qc.invalidateQueries({ queryKey: ["appointments"] });
+    await qc.invalidateQueries({ queryKey: ["low-stock"] });
+    await qc.invalidateQueries({ queryKey: ["rx-due-refill"] });
+    setLastUpdated(new Date());
+    setTimeout(() => setRefreshing(false), 500);
+  };
 
   const s = stats;
   const occPct = s ? Math.round((s.beds_occupied / s.total_beds) * 100) : 0;
@@ -51,6 +85,25 @@ export default function DashboardPage() {
 
   return (
     <div>
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h1 className="font-display font-bold text-xl text-white">Dashboard</h1>
+          <p className="text-sm text-muted mt-0.5">Hospital overview at a glance</p>
+        </div>
+        <div className="flex items-center gap-3">
+          {lastUpdated && (
+            <div className="flex items-center gap-1.5 text-[11px] text-muted">
+              <Clock size={12} />
+              Last updated: {format(lastUpdated, "h:mm a")}
+            </div>
+          )}
+          <button onClick={handleRefresh} disabled={refreshing} className="btn btn-ghost btn-sm">
+            <RefreshCw size={13} className={refreshing ? "animate-spin" : ""} />
+            {refreshing ? "Refreshing..." : "Refresh"}
+          </button>
+        </div>
+      </div>
+
       {/* Alerts */}
       {(s?.pending_labs ?? 0) > 0 && (
         <div className="flex items-center gap-2.5 px-4 py-2.5 bg-danger/8 border border-danger/20 rounded-lg text-danger text-[13px] mb-3">
@@ -67,10 +120,10 @@ export default function DashboardPage() {
 
       {/* Stat cards */}
       <div className="grid grid-cols-4 gap-3.5 mb-5">
-        <StatCard icon="👥" value={s?.total_patients ?? "—"} label="Total Patients" change="↑ 12% vs last month" trend="up" accent="text-accent" delay="d1" />
-        <StatCard icon="📅" value={s?.today_appointments ?? "—"} label="Today's Appointments" change="↑ 8 more than yesterday" trend="up" accent="text-success" delay="d2" />
-        <StatCard icon="🛏" value={`${s?.beds_occupied ?? 0}/${s?.total_beds ?? 0}`} label="Beds Occupied" change={`${occPct}% occupancy`} trend={occPct > 80 ? "up" : "down"} accent="text-warning" delay="d3" />
-        <StatCard icon="💰" value={fmt(s?.today_revenue ?? 0)} label="Today's Revenue" change="↑ 18% vs yesterday" trend="up" accent="text-danger" delay="d4" />
+        <StatCard icon="👥" value={s?.total_patients ?? "—"} label="Total Patients" change="↑ 12% vs last month" trend="up" accent="text-accent" delay="d1" href="/patients" />
+        <StatCard icon="📅" value={s?.today_appointments ?? "—"} label="Today's Appointments" change="↑ 8 more than yesterday" trend="up" accent="text-success" delay="d2" href="/appointments" />
+        <StatCard icon="🛏" value={`${s?.beds_occupied ?? 0}/${s?.total_beds ?? 0}`} label="Beds Occupied" change={`${occPct}% occupancy`} trend={occPct > 80 ? "up" : "down"} accent="text-warning" delay="d3" href="/wards" />
+        <StatCard icon="💰" value={fmt(s?.today_revenue ?? 0)} label="Today's Revenue" change="↑ 18% vs yesterday" trend="up" accent="text-danger" delay="d4" href="/billing" />
       </div>
 
       {/* Quick stats */}

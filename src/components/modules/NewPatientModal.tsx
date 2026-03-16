@@ -43,7 +43,7 @@ export function NewPatientModal({ open, onClose }: { open: boolean; onClose: () 
       qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
       reset(); onClose();
     },
-    onError: () => toast.error("Failed to register patient"),
+    onError: (err: Error) => toast.error(err.message || "Failed to register patient"),
   });
 
   if (!open) return null;

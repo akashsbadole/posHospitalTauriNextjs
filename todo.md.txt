@@ -1,0 +1,858 @@
+# MediCore HMS — Feature Tracker & Roadmap
+
+> **Stack:** Tauri 2 + Next.js 14 + Rust + SQLite + Neon PostgreSQL  
+> **Last updated:** March 2026  
+> **Status legend:** ✅ Done · 🔧 Partial · ⬜ Not started · 🔥 High priority · 💡 Idea
+
+---
+
+## Table of Contents
+
+1. [Infrastructure & Setup](#1-infrastructure--setup)
+2. [Dashboard](#2-dashboard)
+3. [Patient Management](#3-patient-management)
+4. [Appointment Scheduling](#4-appointment-scheduling)
+5. [Prescription Management](#5-prescription-management)
+6. [Lab & Diagnostics](#6-lab--diagnostics)
+7. [Ward & Bed Management](#7-ward--bed-management)
+8. [Doctors & Staff](#8-doctors--staff)
+9. [Pharmacy & Inventory](#9-pharmacy--inventory)
+10. [Billing & Invoices](#10-billing--invoices)
+11. [Insurance Claims](#11-insurance-claims)
+12. [Analytics & Reports](#12-analytics--reports)
+13. [Audit Logs](#13-audit-logs)
+14. [Settings](#14-settings)
+15. [Cloud Sync (Neon PostgreSQL)](#15-cloud-sync-neon-postgresql)
+16. [Security & Auth](#16-security--auth)
+17. [Notifications & Alerts](#17-notifications--alerts)
+18. [Data Import / Export](#18-data-import--export)
+19. [Future Modules](#19-future-modules)
+20. [Performance & Quality](#20-performance--quality)
+
+---
+
+## 1. Infrastructure & Setup
+
+### ✅ Done
+- [x] Tauri 2 project scaffold with Next.js 14 static export
+- [x] `next.config.js` — `output: "export"`, `distDir: "out"`, `trailingSlash: true`
+- [x] `tailwind.config.ts` — custom colors, fonts, border-radius mapped to design system
+- [x] `globals.css` — CSS variables, `@layer components` for `.card`, `.btn`, `.badge`, `.data-table`, `.form-label`, `.icon-btn`, `.tab-bar`, animations
+- [x] Syne + DM Sans Google Fonts loaded
+- [x] `tsconfig.json` — path alias `@/*` → `./src/*`
+- [x] `postcss.config.js`
+- [x] `package.json` — all dependencies: Tauri plugins, React Query, Zustand, Recharts, react-hook-form, Zod, Sonner, Radix, lucide-react, clsx, date-fns
+- [x] `Cargo.toml` — rusqlite (bundled), r2d2, r2d2_sqlite, tokio, tokio-postgres, serde, chrono, uuid, anyhow
+- [x] `tauri.conf.json` — window size (1440×900), min size, FS scope, plugins config
+- [x] `build.rs` for Tauri
+- [x] Tauri plugins registered: shell, dialog, fs, notification
+- [x] SQLite WAL mode + foreign keys + PRAGMA synchronous=NORMAL
+- [x] R2D2 connection pool (max 10 connections)
+- [x] Full DB schema migrations in single SCHEMA const (runs on startup, idempotent)
+- [x] AppShell layout: sidebar + topbar + scrollable main content area
+- [x] Collapsible sidebar with icon-only mode
+- [x] React Query provider (staleTime 30s, retry 1, no refetchOnWindowFocus)
+- [x] Sonner toast provider with MediCore dark theme styling
+- [x] Zustand persisted store (currentUser, sidebarCollapsed, lastSync)
+- [x] `src/types/index.ts` — all interfaces: Patient, Doctor, Staff, Appointment, Prescription, PrescriptionDrug, LabTest, Ward, Bed, Invoice, InvoiceItem, InsuranceClaim, InventoryItem, DashboardStats, AuditLog, Staff, VitalSigns
+- [x] `src/lib/tauri.ts` — 50+ typed invoke() bridge functions (single source of truth)
+- [x] `README.md` — setup guide, structure map, module list, DB path, env vars
+
+### 🔥 High Priority
+- [ ] `tauri.conf.json` — add app icons (32x32, 128x128, 128x128@2x, .icns, .ico)
+- [ ] App version auto-inject from `package.json` into UI (Settings → About)
+- [x] `.env` support — load `NEON_DATABASE_URL` via Tauri env plugin
+- [ ] Auto-updater setup with Tauri `updater` plugin
+- [ ] Splash screen on first load while DB migrations run
+
+### ⬜ Not Started
+- [ ] Multi-window support (e.g. open patient in new window)
+- [ ] Deep link support (`medicore://patient/421`)
+- [ ] Tray icon with quick actions (new appointment, sync status)
+- [ ] System startup on login option (Settings toggle)
+- [ ] Custom app menu bar (macOS/Linux native menus)
+- [ ] Offline detection + graceful degradation banner
+- [ ] `CHANGELOG.md` auto-generated from git commits
+- [ ] Build pipeline — GitHub Actions for Windows/macOS/Linux builds
+
+---
+
+## 2. Dashboard
+
+### ✅ Done
+- [x] Page title + subtitle
+- [x] Critical + warning alert strips (pending labs, low stock) with dismiss + link
+- [x] 4 main stat cards with colored top border, glow blob, trend arrow (Total Patients, Appointments, Beds, Revenue)
+- [x] 6-item quick stat bar (Pending Labs, Rx Refills, Claims, Low Stock, Discharges, New Patients)
+- [x] Today's Appointments panel — time, patient, type, doctor, status badge
+- [x] Recent Activity feed with entity icons and timestamps
+- [x] Inventory Alerts panel — stock level bars, color-coded danger/warning/ok
+- [x] Prescriptions Due Refill panel
+- [x] Insurance Claims breakdown bars (Submitted / Under Review / Approved / Rejected)
+- [x] `get_dashboard_stats` Rust command — 12 aggregate queries using `unwrap_or(0)` (never panics)
+- [x] `get_recent_activity` Rust command — last N audit log entries
+- [x] TanStack React Query fetching for all dashboard panels
+- [x] Staggered fade-up animation on stat cards
+- [x] Refresh button to manually re-fetch all dashboard data
+- [x] Last updated timestamp shown on dashboard
+- [x] Clickable stat cards navigate to relevant module
+
+### 🔥 High Priority
+- [ ] "Today's Discharges" and "Today's Admissions" mini table
+- [ ] OPD vs IPD patient split indicator
+
+### ⬜ Not Started
+- [ ] Customizable dashboard — drag-and-drop panel order
+- [ ] Date range picker (Today / This Week / This Month)
+- [ ] Weather widget (for staff welfare, optional)
+- [ ] Doctors on-duty live card strip (with photo avatars)
+- [ ] Real-time vitals alert for ICU patients
+- [ ] Appointment completion rate gauge chart
+- [ ] Hospital capacity meter (total beds vs occupied %)
+- [ ] News feed / hospital announcements ticker
+
+---
+
+## 3. Patient Management
+
+### ✅ Done
+- [x] Patient list page with full-width table
+- [x] Search by name, phone, patient_code (LOWER() SQL)
+- [x] Filter by status dropdown (Active / Admitted / Discharged / Critical / OPD)
+- [x] 5 status summary counts (Total, Active, Admitted, Critical, OPD)
+- [x] Avatar with initials + rotating color scheme
+- [x] Allergy warning indicator (⚠ on avatar row)
+- [x] Patient code (PT-XXXXXXXX) display in mono font
+- [x] Age calculated from DOB + gender initial
+- [x] Blood group badge (purple)
+- [x] Department badge (blue)
+- [x] Assigned doctor name (joined from doctors table)
+- [x] Insurance provider display
+- [x] Status badge with color mapping
+- [x] Eye / Edit / Delete action buttons per row
+- [x] NewPatientModal with react-hook-form + zod validation
+- [x] Modal fields: full_name, dob, gender, phone, email, blood_group, department, address, allergies, chronic_conditions, emergency_contact, emergency_phone, insurance_provider, insurance_number
+- [x] `create_patient` Rust command — generates PT-XXXXXXXX code, writes audit log
+- [x] `get_patients` Rust command — optional search + status filter
+- [x] `get_patient_by_id` Rust command
+- [x] `update_patient` Rust command — partial update via serde_json::Value
+- [x] `delete_patient` Rust command — CASCADE deletes all related records
+- [x] `get_patient_vitals` Rust command
+- [x] `add_vital_signs` Rust command
+- [x] 16-column `patients` table with indexes on status, phone, patient_code
+- [x] `vital_signs` table (BP sys/dia, heart rate, temperature, SpO2, respiratory rate, weight, height)
+- [x] Patient detail / profile page (`/patients/[id]`) - all tabs
+- [x] Edit Patient modal (pre-filled from existing data)
+- [x] Confirm dialog before delete
+
+### 🔥 High Priority
+- [ ] Bulk actions (select multiple → bulk discharge, bulk export)
+- [ ] Patient photo upload (store path via Tauri fs plugin)
+
+### ⬜ Not Started
+- [ ] Patient QR code generation (for bedside scanning)
+- [ ] Patient duplicate detection (same name + phone)
+- [ ] Patient merge tool (combine duplicate records)
+- [ ] Next-of-kin / family members linking
+- [ ] Patient portal / printable summary sheet
+- [ ] Medical history timeline view (chronological all events)
+- [ ] Consent form digital signing
+- [ ] Patient referral in / referral out tracking
+- [ ] International patient handling (passport, visa, currency)
+- [ ] Pediatric growth chart (weight/height percentile)
+- [ ] Pregnancy tracking module
+- [ ] Chronic disease management flags (Diabetes, Hypertension, etc.)
+
+---
+
+## 4. Appointment Scheduling
+
+### ✅ Done
+- [x] Appointments page with date navigation (prev/next day arrows + Today button)
+- [x] Full appointment table with time, patient, type, doctor, department, status, notes, actions
+- [x] Status workflow buttons inline: Scheduled → Check In → Complete, Cancel
+- [x] `useMutation` for status updates with query invalidation
+- [x] Time slot grid (17 slots) — shows Available vs Booked (red disabled)
+- [x] 4 summary count cards (Total, Scheduled, Checked In, Completed)
+- [x] `get_appointments` Rust command — filter by date and/or doctor_id, JOIN patient + doctor names
+- [x] `get_appointment_by_id` Rust command
+- [x] `create_appointment` Rust command — generates APT-XXXXXXXX code
+- [x] `update_appointment_status` Rust command — writes audit log
+- [x] `cancel_appointment` Rust command — with optional reason
+- [x] `get_upcoming_appointments` Rust command — for patient profile
+- [x] `appointments` table with indexes on date, doctor_id, patient_id
+
+### 🔥 High Priority
+- [x] New Appointment modal — patient search (typeahead), doctor select, date picker, time slot picker, type select, notes
+- [x] Weekly calendar view (7 columns by time)
+- [ ] Doctor filter — show slots for specific doctor only
+- [ ] Appointment conflict detection (same doctor + same slot)
+- [ ] Follow-up appointment scheduling (from completed appointment)
+
+### ⬜ Not Started
+- [ ] Monthly calendar view with dot indicators
+- [ ] Recurring appointment support (weekly physio, monthly checkup)
+- [ ] SMS/WhatsApp appointment reminder (via Tauri shell → twilio/fast2sms)
+- [ ] Patient self-check-in via QR code scan
+- [ ] Walk-in appointment fast registration
+- [ ] Token/queue number system for OPD
+- [ ] Waiting room display screen output
+- [ ] Doctor unavailability/holiday calendar blocking
+- [ ] Appointment notes to auto-generate follow-up Rx
+- [ ] Video consultation link integration (Jitsi / Zoom API)
+- [ ] Appointment PDF confirmation printout
+- [ ] No-show tracking and pattern analysis
+- [ ] Waitlist for fully booked slots
+
+---
+
+## 5. Prescription Management
+
+### ✅ Done
+- [x] Prescriptions list page with search
+- [x] Rx code (RX-XXXXXXXX) display
+- [x] Patient + Doctor display (joined)
+- [x] Diagnosis field display
+- [x] Drugs list inline (up to 2 + "+N more")
+- [x] Drug detail: name, dosage, frequency
+- [x] Issue date and valid_until with color warning (danger < 3 days, warning < 7 days)
+- [x] Refills remaining per drug (red if 0)
+- [x] Status badge (Active / Expired / Cancelled)
+- [x] Eye + Print action buttons
+- [x] 4 summary count cards (Total, Active, Expired, Cancelled)
+- [x] `prescriptions` table + `prescription_drugs` table (child records with CASCADE)
+- [x] `get_prescriptions` Rust command — optional patient_id filter, JOIN names
+- [x] `get_prescription_by_id` Rust command — loads drugs via separate `load_drugs()` helper
+- [x] `create_prescription` Rust command — creates prescription + all drug rows in one command
+- [x] `cancel_prescription` Rust command
+- [x] `refill_prescription` Rust command — adds 3 refills to specific drug
+- [x] `get_prescriptions_due_refill` Rust command — finds prescriptions with 0 refills remaining
+
+### 🔥 High Priority
+- [x] New Prescription modal — patient search, doctor, diagnosis, valid_until, add multiple drugs dynamically
+- [ ] Drug autocomplete (searchable list from inventory table)
+- [ ] Drug interaction checker (local DB of known interactions)
+- [ ] Prescription detail / view page
+- [ ] Print prescription as PDF (formatted A5 prescription pad)
+- [ ] Expiry auto-update job (cron-like: mark expired prescriptions nightly)
+
+### ⬜ Not Started
+- [ ] Digital signature on prescriptions (doctor signs before issuing)
+- [ ] Prescription template library (common conditions → pre-filled drugs)
+- [ ] Pharmacy dispensing workflow (mark drugs as dispensed)
+- [ ] Controlled substance tracking (special log for Schedule H/X drugs)
+- [ ] Drug dosage calculator (weight-based dosing for pediatrics)
+- [ ] Generic drug substitution suggestions
+- [ ] Prescription QR code (patient scans at pharmacy)
+- [ ] e-Prescription integration (NHA / Ayushman Bharat APIs)
+- [ ] Adverse drug reaction (ADR) reporting
+- [ ] Medication adherence tracking
+
+---
+
+## 6. Lab & Diagnostics
+
+### ✅ Done
+- [x] Lab tests list with full table
+- [x] Search by patient name or test name
+- [x] Filter by status
+- [x] Visual status pipeline (5 steps with click-to-filter)
+- [x] Test category badge (Hematology, Biochemistry, etc.)
+- [x] Result value + unit display with abnormal highlighting (red if abnormal)
+- [x] Abnormal flag badge (Yes/No)
+- [x] Advance-status button (moves test to next step in pipeline)
+- [x] Upload report button
+- [x] Eye action button
+- [x] `lab_tests` table with indexes on status and patient_id
+- [x] `get_lab_tests` Rust command — filter by status and/or patient_id
+- [x] `create_lab_test` Rust command — generates LAB-XXXXXXXX code
+- [x] `update_lab_result` Rust command — sets result, unit, abnormal flag, changes status to Ready
+- [x] `update_lab_status` Rust command
+- [x] `upload_lab_report` Rust command — stores file path
+
+### 🔥 High Priority
+- [x] Order Lab Test modal — patient search, doctor, test name, category
+- [x] Lab result entry modal — result value, unit, reference range, abnormal toggle, notes
+- [ ] Result ready notification (desktop notification via Tauri plugin)
+- [ ] Abnormal result alert on dashboard
+- [ ] Lab report PDF viewer (open stored report_path file with shell::open)
+- [ ] Reference range validation (auto-flag abnormal based on normal ranges per test)
+
+### ⬜ Not Started
+- [ ] Lab test catalog (searchable list of all test names with reference ranges)
+- [ ] Sample collection workflow — barcode label printing
+- [ ] Batch result import (CSV upload for bulk results)
+- [ ] DICOM viewer for radiology (X-ray, CT, MRI)
+- [ ] Microbiology culture sensitivity report
+- [ ] Critical value auto-alerting (call/SMS doctor when result is critical)
+- [ ] Lab equipment integration (HL7 interface for auto-import from analyzer)
+- [ ] Result trending (multiple results for same test over time)
+- [ ] Lab billing integration (auto-create invoice item on test order)
+- [ ] External lab order management (send sample out, receive result)
+- [ ] Lab QC (quality control) tracking
+
+---
+
+## 7. Ward & Bed Management
+
+### ✅ Done
+- [x] Ward list sidebar (collapsible, click to select)
+- [x] Visual bed grid (color-coded: Occupied red, Available green, Reserved yellow, Maintenance gray)
+- [x] Hover reveal — discharge button on occupied beds
+- [x] Current Admissions table (bed number, patient, admitted date, expected discharge, notes)
+- [x] Discharge button with confirmation
+- [x] 5 summary count cards (Total, Occupied, Available, Reserved, Maintenance)
+- [x] Legend for bed colors
+- [x] `wards` table + `beds` table (ward_id FK, unique bed_number per ward)
+- [x] `get_wards` Rust command
+- [x] `get_beds` Rust command — optional ward_id filter, JOIN ward name + patient name
+- [x] `admit_patient` Rust command — updates bed + patient status to Admitted
+- [x] `discharge_patient` Rust command — clears bed + updates patient status to Discharged
+- [x] `update_bed_status` Rust command (Available / Reserved / Maintenance)
+- [x] `create_ward` Rust command — generates WD-XXXXXXXX code
+
+### 🔥 High Priority
+- [x] Admit Patient modal — patient search, bed selection, expected discharge date, notes
+- [ ] Add Ward modal (ward name, type, department, number of beds → auto-generates beds)
+- [ ] Add/Remove individual beds from ward
+- [ ] Bed transfer (move patient from one bed to another)
+- [ ] Expected discharge reminder (highlight overdue expected discharges)
+- [ ] ICU-specific view (larger bed cells with vital sign indicators)
+
+### ⬜ Not Started
+- [ ] Ward floor plan editor (drag-and-drop bed layout)
+- [ ] Bed cleaning/turnaround workflow (Dirty → Cleaning → Ready)
+- [ ] Real-time bed availability board (full-screen display for reception)
+- [ ] Ambulance dispatch and bed reservation
+- [ ] Inter-ward transfer with discharge summary generation
+- [ ] Discharge summary template generation (PDF)
+- [ ] Readmission risk flag
+- [ ] Length of stay analytics per ward / department
+- [ ] Nursing assignment to wards / beds
+- [ ] Call bell integration (IoT)
+
+---
+
+## 8. Doctors & Staff
+
+### ✅ Done
+- [x] Doctors tab + Staff tab with tab switcher
+- [x] Doctor table: name, staff_code, specialization, qualification, experience, fee, shift, availability
+- [x] Availability status inline select (dropdown changes status immediately via mutation)
+- [x] Staff table: name, staff_code, role, department, shift, phone, joined, status
+- [x] 4 availability summary cards (Available, In Surgery, On Round, Off Duty)
+- [x] Search by name or specialization
+- [x] Edit + Delete action buttons
+- [x] Avatar with initials + rotating colors
+- [x] `doctors` table + `staff` table
+- [x] `get_doctors` Rust command
+- [x] `get_doctor_by_id` Rust command
+- [x] `create_doctor` Rust command — generates DR-XXXXXXXX code
+- [x] `update_doctor` Rust command (partial via serde_json::Value)
+- [x] `update_doctor_status` Rust command — instant availability toggle
+- [x] `get_staff` Rust command
+- [x] `create_staff` Rust command — generates ST-XXXXXXXX code
+- [x] `update_staff` Rust command
+- [x] `delete_staff` Rust command
+
+### 🔥 High Priority
+- [x] Add Doctor modal (full form: name, specialization, qualification, experience, fee, phone, email, shift)
+- [ ] Add Staff modal (name, role, department, phone, email, shift, join_date, salary)
+- [ ] Edit Doctor / Edit Staff modals (pre-filled)
+- [ ] Doctor schedule / duty roster view (weekly calendar of shifts)
+- [ ] Staff profile page (`/staff/[id]`) — appointments count, patients served, revenue
+
+### ⬜ Not Started
+- [ ] Biometric attendance integration
+- [ ] Leave management system (apply, approve, track leave balance)
+- [ ] Duty roster generator (auto-assign shifts based on headcount)
+- [ ] Doctor performance dashboard (consultations/day, revenue generated, patient satisfaction)
+- [ ] Staff payroll calculation (salary + overtime + deductions)
+- [ ] Training & certification tracking (renewal reminders)
+- [ ] Doctor profile PDF (for website / accreditation)
+- [ ] Locum / visiting doctor management
+- [ ] Department-wise headcount analytics
+- [ ] HR document store (offer letter, ID proof, certificates)
+- [ ] Staff mobile app (view schedules, mark attendance, view payslips)
+
+---
+
+## 9. Pharmacy & Inventory
+
+### ✅ Done
+- [x] Inventory list with full table
+- [x] All Items / Low Stock tab switcher
+- [x] Search + category filter
+- [x] 4 summary stat cards (Total Items, Low Stock Alerts, Expiring in 30 days, Stock Value)
+- [x] Stock level progress bar (danger < 15%, warning < 30%, green otherwise)
+- [x] Stock percentage label
+- [x] Expiry date with color warning (red if expiring within 30 days)
+- [x] +stock / -stock inline action buttons
+- [x] Low stock alert banner at page top
+- [x] Total stock value calculation (current_stock × unit_price)
+- [x] `inventory` table with item_code, category, min_threshold, max_capacity
+- [x] `get_inventory` Rust command — optional category filter
+- [x] `get_low_stock_items` Rust command — WHERE current_stock <= min_threshold
+- [x] `update_stock` Rust command — add/subtract with MAX(0, ...) guard
+- [x] `create_inventory_item` Rust command — generates INV-XXXXXXXX code
+- [x] `delete_inventory_item` Rust command
+
+### 🔥 High Priority
+- [x] Add Inventory Item modal (name, category, initial stock, min_threshold, max_capacity, unit, unit_price, supplier, expiry_date, location)
+- [x] Edit Inventory Item modal
+- [ ] Reorder All Low — bulk reorder sheet / purchase order generation
+- [ ] Expiry alert push notification
+- [ ] Stock movement history (which commands increased/decreased which item, with timestamp)
+
+### ⬜ Not Started
+- [ ] Purchase Order management (create PO → send to supplier → receive goods → update stock)
+- [ ] Supplier management (name, contact, lead time, payment terms)
+- [ ] Barcode / QR scanning for stock update (Tauri camera plugin)
+- [ ] Batch number and lot tracking
+- [ ] FIFO inventory management (first in, first out for perishables)
+- [ ] Automatic reorder point (trigger PO when stock hits min_threshold)
+- [ ] Drug dispensing from prescription (links Rx → inventory → reduces stock)
+- [ ] Narcotics/controlled substance separate register
+- [ ] Equipment maintenance schedule (next service date, last serviced)
+- [ ] Vendor comparison (price vs quality analytics)
+- [ ] Cold chain monitoring for temperature-sensitive drugs
+- [ ] Wastage tracking (expired / damaged / spilled)
+
+---
+
+## 10. Billing & Invoices
+
+### ✅ Done
+- [x] Invoice list with full table
+- [x] Search by patient name or invoice code
+- [x] Status filter dropdown
+- [x] 4 summary stat cards (Total Collected, Outstanding, Overdue count, Total Invoices)
+- [x] Revenue breakdown bar chart (OPD / Lab / Surgery / Pharmacy / IPD)
+- [x] Invoice table: code, patient, dates, item count, total, paid, balance, method, status
+- [x] Overdue due_date highlighted in red
+- [x] Balance > 0 highlighted in yellow
+- [x] Inline Pay button (records full balance as Cash payment)
+- [x] Eye / Download / Pay action buttons
+- [x] `invoices` table + `invoice_items` table
+- [x] `get_invoices` Rust command — filter by status/patient_id, loads items via `load_invoice_items()`
+- [x] `get_invoice_by_id` Rust command
+- [x] `create_invoice` Rust command — calculates subtotal, tax, total, balance; creates all line items
+- [x] `record_payment` Rust command — updates paid_amount, balance, changes status to Paid/Partial
+- [x] `export_invoice_pdf` Rust command (stub — returns path)
+- [x] `get_revenue_by_range` Rust command — GROUP BY date for chart
+
+### 🔥 High Priority
+- [x] New Invoice modal — patient search, add line items dynamically, discount, tax, payment method
+- [ ] Invoice detail page — formatted receipt layout with hospital letterhead
+- [ ] Real PDF export (use `printpdf` crate or `wkhtmltopdf` via shell plugin)
+- [x] Partial payment modal — enter amount + payment method
+- [ ] Payment method per payment (not just per invoice)
+- [ ] Overdue auto-status update (cron: mark invoices past due_date as Overdue)
+- [ ] Receipt printout (thermal printer support)
+
+### ⬜ Not Started
+- [ ] GST / tax configuration (CGST, SGST, IGST for India)
+- [ ] Discount approval workflow (manager must approve discounts > X%)
+- [ ] Patient ledger (running balance across all invoices)
+- [ ] Advance payment / deposit management
+- [ ] Refund processing
+- [ ] Credit note generation
+- [ ] Package billing (fixed-price surgery packages)
+- [ ] EMI / installment payment plan
+- [ ] Daily / monthly billing summary report
+- [ ] Tally / accounting software integration (export to Tally XML)
+- [ ] UPI QR code generation for contactless payment
+- [ ] Bank reconciliation tool
+- [ ] Revenue recognition for insurance (pending vs collected)
+
+---
+
+## 11. Insurance Claims
+
+### ✅ Done
+- [x] Claims list with full table
+- [x] Search by patient, claim code, provider
+- [x] Status filter with clickable pipeline cards
+- [x] 3 summary cards (Total Claimed, Total Approved, Pending Review)
+- [x] Claims pipeline visual (Draft → Submitted → Under Review → Approved/Rejected)
+- [x] Submit, Approve, Reject inline action buttons
+- [x] `insurance_claims` table
+- [x] `get_insurance_claims` Rust command — filter by status
+- [x] `create_insurance_claim` Rust command — generates CLM-XXXXXXXX code
+- [x] `update_claim_status` Rust command — handles submitted_date, resolved_date, approved_amount
+
+### 🔥 High Priority
+- [x] New Claim modal — link to invoice, provider name, policy number, claim amount, notes
+- [ ] Claim detail page with full history trail
+- [ ] Document upload for claim (attach PDFs, images via Tauri fs plugin)
+- [ ] Partial approval (approve less than claimed amount)
+- [ ] Insurance provider master list (reuse provider details)
+
+### ⬜ Not Started
+- [ ] TPA (Third-Party Administrator) management
+- [ ] Pre-authorization request workflow
+- [ ] Cashless hospitalization flow
+- [ ] Claim rejection reason tracking + appeal process
+- [ ] NDHM / Ayushman Bharat health ID integration
+- [ ] NABH accreditation documentation support
+- [ ] Insurance provider performance analytics (avg approval time, rejection rate)
+- [ ] Claim aging report (how long each claim has been pending)
+- [ ] Co-pay / deductible management
+- [ ] Multiple insurance per patient (primary + secondary)
+
+---
+
+## 12. Analytics & Reports
+
+### ✅ Done
+- [x] Analytics page with date range tabs (This Month / Last 3 Months / This Year)
+- [x] 4 KPI stat cards (Monthly Revenue, New Patients, Avg Bed Occupancy, Pending Claims)
+- [x] Revenue vs Expenses area chart (12 months, gradient fills)
+- [x] Patient Flow bar chart (New vs Discharged, 12 months)
+- [x] Patients by Department donut/pie chart with legend
+- [x] 30-day Bed Occupancy area + line chart
+- [x] Department Performance Summary table (patients, avg stay, revenue, occupancy %, satisfaction)
+- [x] Recharts with consistent dark theme tooltip style
+- [x] `get_revenue_by_range` Rust command (real SQL, date-grouped)
+- [x] `get_dashboard_stats` provides KPI data
+
+### 🔥 High Priority
+- [x] Wire all charts to real live data (currently using MOCK_* constants)
+- [x] Date range picker for all charts (from/to date)
+- [ ] Export chart as PNG (canvas.toBlob + Tauri save dialog)
+- [ ] Export data as CSV (Tauri dialog → write file)
+- [ ] Doctor-wise revenue report
+- [ ] Patient-wise visit frequency report
+
+### ⬜ Not Started
+- [ ] Custom report builder (select columns, filters, group-by)
+- [ ] Scheduled report delivery (email PDF weekly)
+- [ ] MIS (Management Information System) monthly summary PDF
+- [ ] Comparative analytics (this month vs last month vs last year)
+- [ ] Patient demographics analysis (age groups, gender, blood group distribution)
+- [ ] Disease/diagnosis frequency analysis
+- [ ] Appointment no-show rate trend
+- [ ] Lab turnaround time analytics
+- [ ] Insurance collection efficiency
+- [ ] Staff productivity metrics
+- [ ] Bed turnover rate
+- [ ] Average revenue per patient (OPD vs IPD)
+- [ ] Readmission rate tracking
+- [ ] Net Promoter Score (patient satisfaction) dashboard
+- [ ] Forecast modeling (predicted patient load next month)
+
+---
+
+## 13. Audit Logs
+
+### ✅ Done
+- [x] Audit logs page with full table
+- [x] Search by action, user, entity
+- [x] Filter by entity type dropdown
+- [x] Entity icon mapping (patient, prescription, lab, bed, billing, appointment, etc.)
+- [x] User avatar with initials
+- [x] Entity badge (blue)
+- [x] Action + details display
+- [x] IP address column (stub, populated as null currently)
+- [x] Export button (stub)
+- [x] `audit_logs` table with indexes on entity and timestamp
+- [x] `get_audit_logs` Rust command — optional entity filter, limit, ORDER BY id DESC
+- [x] `audit::log()` helper called throughout all commands on every mutation
+- [x] Audit entries for: patient CRUD, doctor status, appointment lifecycle, prescriptions, lab, bed admit/discharge, payments, claims, stock changes, sync
+
+### 🔥 High Priority
+- [ ] Date range filter (from/to timestamps)
+- [ ] User filter (filter by specific user who made the change)
+- [ ] Export audit log as CSV (for compliance)
+- [ ] IP address capture (pass from frontend context)
+- [ ] Audit log retention policy (auto-delete entries older than N days, configurable in Settings)
+
+### ⬜ Not Started
+- [ ] Before/after value recording (what changed: old → new)
+- [ ] Suspicious activity detection (login at unusual hours, bulk deletes)
+- [ ] Compliance report generation (HIPAA / NABH format)
+- [ ] Log signing (HMAC) for tamper detection
+- [ ] External SIEM integration (syslog forwarding)
+
+---
+
+## 14. Settings
+
+### ✅ Done
+- [x] Settings page with sidebar section nav (6 sections)
+- [x] Hospital Info — name, reg number, address, city/state, phone, email, website, type, logo upload area
+- [x] Database — SQLite status card (Healthy badge), path, backup interval, backup location, keep-days; Compact / Backup Now / Reset buttons
+- [x] Cloud Sync — Neon connection string input, sync mode dropdown, sync direction dropdown, live connection status card, Test Connection button
+- [x] Notifications — toggle switches for 6 notification types (Low stock, Appointments, Lab results, Rx refill, Overdue invoices, Sync status)
+- [x] Security — session timeout, max login attempts, 4 toggle switches (password on startup, 2FA, audit all changes, auto-lock)
+- [x] Appearance — theme selector (Dark/Light/System), accent color swatches (6 colors), font size, date format
+- [x] Save Changes button with toast feedback
+- [x] Wire all settings to actual Rust commands
+- [x] `settings` DB table — key/value store for all config
+- [x] `get_setting` / `set_setting` Tauri commands
+- [x] Backup Now → actually triggers `.backup()` rusqlite function
+
+### 🔥 High Priority
+- [ ] Hospital info used in invoice PDF header
+- [ ] Logo actually stored and loaded via Tauri fs plugin
+- [ ] Reset Database → confirmation dialog → drop + recreate schema
+
+### ⬜ Not Started
+- [x] User management (create/edit/deactivate login users)
+- [ ] Role-based permissions matrix editor
+- [ ] Password change for current user
+- [ ] Data retention policies (auto-purge old records)
+- [ ] SMTP email configuration (for reports, reminders)
+- [ ] SMS gateway configuration (Twilio, Fast2SMS, etc.)
+- [ ] WhatsApp Business API configuration
+- [ ] Print settings (default printer, receipt format, paper size)
+- [ ] Keyboard shortcut customization
+- [ ] Language / locale selection (Hindi, Tamil, Telugu support)
+- [ ] Currency and number format selection
+- [ ] Fiscal year configuration
+- [ ] Department management (add/rename/deactivate departments)
+- [ ] Tariff management (update consultation / procedure fees)
+- [ ] About page (app version, license, credits)
+
+---
+
+## 15. Cloud Sync (Neon PostgreSQL)
+
+### ✅ Done
+- [x] `sync_queue` table — operation, table_name, record_id, payload, synced flag
+- [x] `sync::queue_sync()` helper — called after every INSERT/UPDATE/DELETE
+- [x] `sync::sync_to_cloud()` async function — fetches unsynced queue, marks as synced
+- [x] `sync::get_sync_status()` — returns last_sync time + pending count
+- [x] `sync_to_cloud` Tauri command (async)
+- [x] `get_sync_status` Tauri command
+- [x] Topbar sync button with spinner + toast feedback
+- [x] Sync status strip in sidebar (Live indicator)
+- [x] tokio-postgres in Cargo.toml
+- [x] `.env` support for NEON_DATABASE_URL
+- [x] Settings page sync Now button with status display
+
+### 🔥 High Priority
+- [ ] Neon schema mirrors SQLite schema (create Neon migration SQL)
+- [ ] Handle sync conflicts (last-write-wins or merge strategy)
+- [ ] Retry logic for failed sync entries (exponential backoff)
+- [ ] Background sync interval (every 5 minutes via Tauri intervals)
+- [ ] Sync error notification (desktop alert on repeated failure)
+
+### ⬜ Not Started
+- [ ] Multi-device sync (two reception desktops sync to same Neon DB)
+- [ ] Offline queue — accumulate changes when offline, flush when online
+- [ ] Selective sync (sync only billing, not vitals, etc.)
+- [ ] Sync progress bar for large initial sync
+- [ ] Sync log viewer (what was synced, when, any errors)
+- [ ] Pull sync (cloud changes pushed to local — for multi-device)
+- [ ] Encryption at rest for cloud data (Neon + local SQLite)
+- [ ] GDPR-compliant data deletion from cloud on request
+
+---
+
+## 16. Security & Auth
+
+### ✅ Done
+- [x] Login screen (username + password) before app loads
+- [x] `users` table (id, username, password_hash, role, department, last_login, is_active)
+- [x] bcrypt password hashing (use `bcrypt` crate)
+- [x] Session token stored in Zustand (cleared on app close unless "remember me")
+- [x] Settings UI for security policies (session timeout, 2FA toggle, audit toggle)
+- [x] Audit logging on all mutations
+- [x] Session timeout — auto-lock after N minutes of inactivity
+- [x] Role-based access control:
+  - [x] `Admin` — full access
+  - [x] `Doctor` — own patients, appointments, prescriptions, lab
+  - [x] `Receptionist` — patients, appointments, billing
+  - [x] `Nurse` — vitals, lab, wards
+  - [x] `Pharmacist` — inventory, prescriptions (read)
+  - [x] `Accountant` — billing, insurance, analytics (read)
+
+### ⬜ Not Started
+- [ ] Two-factor authentication (TOTP via QR code — use `totp-rs` crate)
+- [ ] IP allowlist for cloud sync
+- [ ] Failed login attempt lockout
+- [ ] Password expiry policy
+- [ ] Audit log for login events (success, failure, IP)
+- [ ] Data masking for sensitive fields (show only last 4 digits of phone to non-admins)
+- [ ] HIPAA compliance checklist
+- [ ] Encrypted SQLite database (SQLCipher via rusqlite feature flag)
+- [ ] Auto-screen lock on idle
+- [ ] Secure credential storage (use Tauri `stronghold` or OS keychain)
+
+---
+
+## 17. Notifications & Alerts
+
+### 🔧 Partial
+- [x] Settings UI for notification toggles
+- [x] Dashboard alert strips (critical labs, low stock)
+- [x] Sonner toast notifications for all user actions
+- [x] `tauri-plugin-notification` in Cargo.toml
+
+### 🔥 High Priority
+- [ ] Desktop push notifications via `tauri-plugin-notification` for:
+  - [ ] Lab result ready
+  - [ ] Low stock alert (when stock drops below threshold)
+  - [ ] Appointment 15 min reminder
+  - [ ] Invoice overdue
+  - [ ] Prescription refill due
+- [ ] In-app notification bell with unread count (connect to real data)
+- [ ] Notification center panel (click bell → slide-out list)
+- [ ] Mark as read / mark all read
+
+### ⬜ Not Started
+- [ ] SMS notifications via Tauri shell → API call (Fast2SMS / Twilio)
+- [ ] WhatsApp notifications (via WhatsApp Business API or Twilio)
+- [ ] Email notifications (SMTP via `lettre` crate)
+- [ ] Notification preferences per user (not just global)
+- [ ] Critical alert escalation (retry if not acknowledged in 10 min)
+- [ ] Patient appointment reminder SMS (day before + 2 hours before)
+
+---
+
+## 18. Data Import / Export
+
+### ✅ Done
+- [x] Patient CSV export (real implementation)
+- [x] Audit logs CSV export (real implementation)
+- [x] Billing CSV export (real implementation)
+
+### 🔥 High Priority
+- [ ] Invoice PDF export (real PDF generation)
+- [ ] Implement all stub export buttons with actual file writes
+
+### ⬜ Not Started
+- [ ] Patient data import from CSV (bulk onboarding)
+- [ ] Invoice import from legacy system
+- [ ] FHIR (Fast Healthcare Interoperability Resources) export
+- [ ] HL7 message import/export
+- [ ] Excel (.xlsx) report export (use `rust_xlsxwriter` crate)
+- [ ] Full database backup export (ZIP of SQLite + all uploaded files)
+- [ ] Full database restore from backup
+- [ ] Data migration tool (from other HMS software)
+- [ ] QR code batch print for patient ID cards
+- [ ] Barcode batch print for inventory labels
+
+---
+
+## 19. Future Modules
+
+Complete new modules not yet started:
+
+### 🔥 High Priority
+- [ ] **Patient Portal** — read-only view patients can access (appointments, reports, bills)
+- [ ] **OPD Token Queue** — reception issues token, display board shows current token
+- [ ] **Discharge Summary Generator** — fills templated Word/PDF doc from patient data
+
+### ⬜ Not Started
+- [ ] **Telemedicine** — video consultation booking + link management
+- [ ] **Canteen / Cafeteria** — staff and patient meal ordering + billing
+- [ ] **Mortuary Management** — body register, release tracking
+- [ ] **Blood Bank** — blood group inventory, donor registry, cross-matching
+- [ ] **CSSD (Central Sterile Supply)** — sterilization tracking for surgical instruments
+- [ ] **Radiology PACS** — DICOM image storage and viewer
+- [ ] **Operation Theatre (OT) Management** — OT scheduling, equipment, surgical teams
+- [ ] **Ambulance Management** — fleet tracking, dispatch, handover
+- [ ] **Medical Store (Retail Pharmacy)** — separate POS for external patients
+- [ ] **Laundry Management** — linen issue, return, washing tracking
+- [ ] **Maintenance Department** — equipment breakdown, repair tickets, PPM schedule
+- [ ] **Housekeeping** — room cleaning schedule, task assignment
+- [ ] **Library / Knowledge Base** — medical reference, drug monographs
+- [ ] **Research & Clinical Trials** — patient enrollment, data collection, IRB tracking
+- [ ] **Diet & Nutrition** — patient meal planning, dietary restrictions
+- [ ] **Physiotherapy** — session booking, progress tracking, exercise plans
+- [ ] **Dental Module** — tooth chart, treatment plans, dental billing
+- [ ] **Optometry Module** — vision prescription, frame inventory
+- [ ] **Dermatology Module** — before/after photos, treatment tracking
+- [ ] **Psychiatry Module** — session notes, mental health assessments, medication tracking
+- [ ] **Oncology Module** — chemotherapy protocols, cycle tracking, toxicity logging
+- [ ] **Mobile App** (React Native + Tauri Mobile) — doctor on-call app
+
+---
+
+## 20. Performance & Quality
+
+### ✅ Done
+- [x] SQLite WAL mode for concurrent reads
+- [x] Connection pool (r2d2, max 10)
+- [x] Indexes on all frequently filtered columns
+- [x] React Query staleTime 30s (avoids redundant refetches)
+- [x] `filter_map(|r| r.ok())` — individual row errors don't crash list queries
+- [x] `unwrap_or(0)` for dashboard aggregates — never panics
+
+### 🔥 High Priority
+- [x] Pagination for large tables (Patients, Audit Logs, Invoices) — virtual scroll or page buttons
+- [x] Search debounce (300ms) — don't query on every keystroke
+- [ ] SQLite VACUUM periodic maintenance
+- [ ] Lazy loading for patient history (don't load all 5 tabs at once)
+- [ ] TypeScript strict mode fixes (remove any `as any` casts)
+
+### ⬜ Not Started
+- [ ] Unit tests for all Rust commands (`cargo test` with in-memory SQLite)
+- [ ] Integration tests (Tauri mock state)
+- [ ] E2E tests (Playwright or Cypress with Tauri WebDriver)
+- [ ] Load testing (simulate 10,000+ patient records)
+- [ ] Memory usage profiling (Tauri DevTools)
+- [ ] Bundle size optimization (Next.js dynamic imports for heavy pages)
+- [ ] Query performance analysis (EXPLAIN QUERY PLAN on all SQL)
+- [ ] Error boundary components (catch React render errors gracefully)
+- [ ] Storybook for UI component documentation
+- [ ] Accessibility audit (WCAG 2.1 AA compliance)
+- [ ] Keyboard navigation for all interactive elements
+- [ ] High contrast mode (for visually impaired staff)
+
+---
+
+## Quick Win Checklist (next sprint)
+
+Things that are small effort but high value:
+
+- [x] Wire Settings to a real `settings` DB table
+- [x] Add login screen with hardcoded admin/doctor credentials
+- [x] Make CSV export buttons actually export (Tauri dialog + write)
+- [x] Add search debounce (300ms) on all search inputs
+- [x] Patient detail page with tabs
+- [x] New Appointment modal (full form)
+- [x] New Prescription modal (dynamic drug list)
+- [x] Dashboard refresh button + last updated timestamp
+- [x] Clickable stat cards navigate to relevant module
+- [x] Session timeout auto-lock
+- [x] Role-based access control
+- [x] Neon DB connection from .env file
+- [x] Pagination on Patients table (50 per page)
+- [x] Confirm dialog component (reusable, used for all deletes)
+- [x] Date range filter on Analytics page
+- [x] Wire Analytics charts to real `get_revenue_by_range` command
+- [ ] Invoice PDF export using `printpdf` crate
+- [ ] Low stock desktop notification
+
+---
+
+## Stats Summary
+
+| Category | Count |
+|---|---|
+| Pages / Modules | 13 |
+| Rust Tauri Commands | 58 |
+| Frontend invoke() bridges | 50+ |
+| SQLite Tables | 16 |
+| TypeScript Interfaces | 18 |
+| Skill documentation files | 3 |
+| Lines of code (frontend) | ~2,400 |
+| Lines of code (Rust backend) | ~1,900 |
+| **Total lines of code** | **~4,300** |
+
+---
+
+*This document is the single source of truth for MediCore HMS development progress.*
+*Update checkboxes as features are completed.*
+
+==============================================
+Username	Password	Role
+admin	admin123	Admin
+doctor	doctor123	Doctor
+nurse	nurse123	Nurse
+reception	reception123	Receptionist
+pharmacist	pharma123	Pharmacist
+accountant	account123	Accountant

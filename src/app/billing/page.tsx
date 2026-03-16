@@ -1,10 +1,13 @@
 "use client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getInvoices, recordPayment } from "@/lib/tauri";
+import { getInvoices, recordPayment, exportInvoicePdf } from "@/lib/tauri";
 import { useState } from "react";
 import { Plus, Download, Search, Eye, CreditCard, FileText } from "lucide-react";
 import { toast } from "sonner";
-import type { InvoiceStatus } from "@/types";
+import type { InvoiceStatus, Invoice } from "@/types";
+import { NewInvoiceModal } from "@/components/modules/NewInvoiceModal";
+import { PartialPaymentModal } from "@/components/modules/PartialPaymentModal";
+import { format } from "date-fns";
 
 const STATUS_BADGE: Record<InvoiceStatus,string> = {
   Draft:"badge-gray",Pending:"badge-yellow",Paid:"badge-green",Partial:"badge-blue",Overdue:"badge-red",Cancelled:"badge-gray",
@@ -13,6 +16,8 @@ const STATUS_BADGE: Record<InvoiceStatus,string> = {
 export default function BillingPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [search, setSearch] = useState("");
+  const [showNewModal, setShowNewModal] = useState(false);
+  const [paymentInvoice, setPaymentInvoice] = useState<Invoice | null>(null);
   const qc = useQueryClient();
 
   const { data: invoices = [], isLoading } = useQuery({
@@ -34,13 +39,49 @@ export default function BillingPage() {
     !search || i.patient_name?.toLowerCase().includes(search.toLowerCase()) || i.invoice_code.includes(search)
   );
 
+  const handleExportCSV = () => {
+    const headers = ["Invoice Code", "Patient", "Issue Date", "Due Date", "Status", "Subtotal", "Discount", "Tax", "Total", "Paid Amount", "Balance", "Payment Method"];
+    const rows = filtered.map(i => [
+      i.invoice_code,
+      i.patient_name || "",
+      i.issue_date,
+      i.due_date,
+      i.status,
+      i.subtotal.toString(),
+      i.discount.toString(),
+      i.tax.toString(),
+      i.total.toString(),
+      i.paid_amount.toString(),
+      i.balance.toString(),
+      i.payment_method || ""
+    ]);
+    const csv = [headers.join(","), ...rows.map(r => r.map(c => `"${c}"`).join(","))].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `invoices_${format(new Date(), "yyyy-MM-dd")}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Invoices exported to CSV!");
+  };
+
+  const handleDownloadPdf = async (invoiceId: number) => {
+    try {
+      const path = await exportInvoicePdf(invoiceId);
+      toast.success(`Invoice PDF saved to ${path}`);
+    } catch (e) {
+      toast.error("Failed to export PDF: " + e);
+    }
+  };
+
   return (
     <div>
       <div className="page-header">
         <div><h1 className="page-title">Billing & Invoices</h1><p className="page-subtitle">{invoices.length} total invoices</p></div>
         <div className="flex gap-2.5">
-          <button className="btn btn-ghost"><Download size={13} />Export</button>
-          <button className="btn btn-primary"><Plus size={14} />New Invoice</button>
+          <button onClick={handleExportCSV} className="btn btn-ghost"><Download size={13} />Export</button>
+          <button onClick={() => setShowNewModal(true)} className="btn btn-primary"><Plus size={14} />New Invoice</button>
         </div>
       </div>
 
@@ -116,8 +157,8 @@ export default function BillingPage() {
                     <td>
                       <div className="flex gap-1.5">
                         <button className="icon-btn"><Eye size={12} /></button>
-                        {inv.balance>0 && <button onClick={()=>payMut.mutate({id:inv.id,amount:inv.balance})} className="icon-btn hover:!text-success"><CreditCard size={12} /></button>}
-                        <button className="icon-btn hover:!text-accent"><Download size={12} /></button>
+                        {inv.balance>0 && <button onClick={() => setPaymentInvoice(inv)} className="icon-btn hover:!text-success"><CreditCard size={12} /></button>}
+                        <button onClick={() => handleDownloadPdf(inv.id)} className="icon-btn hover:!text-accent"><Download size={12} /></button>
                       </div>
                     </td>
                   </tr>
@@ -126,6 +167,9 @@ export default function BillingPage() {
             </table>
           </div>}
       </div>
+
+      <NewInvoiceModal open={showNewModal} onClose={() => setShowNewModal(false)} />
+      <PartialPaymentModal invoice={paymentInvoice} open={!!paymentInvoice} onClose={() => setPaymentInvoice(null)} />
     </div>
   );
 }

@@ -44,12 +44,7 @@
       "open": true
     },
     "fs": {
-      "scope": {
-        "allow": ["$APPDATA/**", "$DOCUMENT/**", "$DOWNLOAD/**", "$TEMP/**"]
-      }
-    },
-    "notification": {
-      "all": true
+      "requireLiteralLeadingDot": false
     }
   }
 }

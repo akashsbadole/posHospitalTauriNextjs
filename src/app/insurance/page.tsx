@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Plus, Search, CheckCircle, XCircle, Send } from "lucide-react";
 import { toast } from "sonner";
 import type { ClaimStatus } from "@/types";
+import { NewClaimModal } from "@/components/modules/NewClaimModal";
 
 const STATUS_BADGE: Record<ClaimStatus,string> = {
   Draft:"badge-gray",Submitted:"badge-blue","Under Review":"badge-yellow",Approved:"badge-green",Rejected:"badge-red",Paid:"badge-green",
@@ -13,6 +14,7 @@ const STATUS_BADGE: Record<ClaimStatus,string> = {
 export default function InsurancePage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [showNewModal, setShowNewModal] = useState(false);
   const qc = useQueryClient();
 
   const { data: claims = [], isLoading } = useQuery({
@@ -35,7 +37,7 @@ export default function InsurancePage() {
     <div>
       <div className="page-header">
         <div><h1 className="page-title">Insurance Claims</h1><p className="page-subtitle">{claims.length} total claims</p></div>
-        <button className="btn btn-primary"><Plus size={14} />New Claim</button>
+        <button onClick={() => setShowNewModal(true)} className="btn btn-primary"><Plus size={14} />New Claim</button>
       </div>
 
       {/* Summary */}
@@ -107,6 +109,8 @@ export default function InsurancePage() {
             </table>
           </div>}
       </div>
+
+      <NewClaimModal open={showNewModal} onClose={() => setShowNewModal(false)} />
     </div>
   );
 }

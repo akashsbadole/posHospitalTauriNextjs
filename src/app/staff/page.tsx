@@ -4,7 +4,10 @@ import { getDoctors, updateDoctorStatus, getStaff } from "@/lib/tauri";
 import { useState } from "react";
 import { Plus, Search, Edit, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import type { Doctor } from "@/types";
+import type { Doctor, Staff } from "@/types";
+import { NewDoctorModal } from "@/components/modules/NewDoctorModal";
+import { EditDoctorModal } from "@/components/modules/EditDoctorModal";
+import { EditStaffModal } from "@/components/modules/EditStaffModal";
 
 const AVAIL_BADGE: Record<Doctor["availability_status"],string> = {
   "Available":"badge-green","In Surgery":"badge-yellow","On Round":"badge-blue","Off Duty":"badge-gray","On Leave":"badge-red",
@@ -15,8 +18,11 @@ const AVAIL_DOT: Record<Doctor["availability_status"],string> = {
 const SHIFT_BADGE: Record<Doctor["shift"],string> = { Morning:"badge-yellow", Evening:"badge-blue", Night:"badge-purple" };
 
 export default function StaffPage() {
-  const [tab, setTab] = useState<"doctors"|"staff">("doctors");
+  const [tab, setTab] = useState<"doctors"|"staff"|"schedule">("doctors");
   const [search, setSearch] = useState("");
+  const [showNewModal, setShowNewModal] = useState(false);
+  const [editDoctor, setEditDoctor] = useState<Doctor | null>(null);
+  const [editStaff, setEditStaff] = useState<Staff | null>(null);
   const qc = useQueryClient();
 
   const { data: doctors = [], isLoading: loadingDocs } = useQuery({ queryKey:["doctors"], queryFn:getDoctors });
@@ -34,7 +40,7 @@ export default function StaffPage() {
     <div>
       <div className="page-header">
         <div><h1 className="page-title">Doctors & Staff</h1><p className="page-subtitle">{doctors.length} doctors, {staff.length} staff members</p></div>
-        <button className="btn btn-primary"><Plus size={14} />Add Member</button>
+        <button onClick={() => setShowNewModal(true)} className="btn btn-primary"><Plus size={14} />Add Doctor</button>
       </div>
 
       {/* Summary */}
@@ -49,9 +55,9 @@ export default function StaffPage() {
 
       {/* Tabs */}
       <div className="flex gap-4 mb-5 border-b border-border">
-        {(["doctors","staff"] as const).map(t=>(
+        {(["doctors","staff","schedule"] as const).map(t=>(
           <button key={t} onClick={()=>setTab(t)}
-            className={`pb-3 text-[13px] font-medium capitalize border-b-2 transition-all ${tab===t?"border-accent text-accent":"border-transparent text-muted hover:text-white"}`}>{t}</button>
+            className={`pb-3 text-[13px] font-medium capitalize border-b-2 transition-all ${tab===t?"border-accent text-accent":"border-transparent text-muted hover:text-white"}`}>{t === "schedule" ? "Duty Roster" : t}</button>
         ))}
       </div>
 
@@ -96,7 +102,7 @@ export default function StaffPage() {
                             {["Available","In Surgery","On Round","Off Duty","On Leave"].map(s=><option key={s}>{s}</option>)}
                           </select>
                         </td>
-                        <td><div className="flex gap-1.5"><button className="icon-btn hover:!text-accent"><Edit size={12} /></button><button className="icon-btn hover:!text-danger"><Trash2 size={12} /></button></div></td>
+                        <td><div className="flex gap-1.5"><button onClick={() => setEditDoctor(d)} className="icon-btn hover:!text-accent"><Edit size={12} /></button><button className="icon-btn hover:!text-danger"><Trash2 size={12} /></button></div></td>
                       </tr>
                     );
                   })}
@@ -137,6 +143,51 @@ export default function StaffPage() {
             </div>}
         </div>
       )}
+
+      {tab === "schedule" && (
+        <div className="card">
+          <div className="p-4 border-b border-border">
+            <h3 className="font-display font-bold text-lg">Doctor Duty Roster - This Week</h3>
+            <p className="text-sm text-muted">Weekly schedule view for all doctors</p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Doctor</th>
+                  <th>Specialization</th>
+                  <th>Mon</th>
+                  <th>Tue</th>
+                  <th>Wed</th>
+                  <th>Thu</th>
+                  <th>Fri</th>
+                  <th>Sat</th>
+                  <th>Sun</th>
+                </tr>
+              </thead>
+              <tbody>
+                {doctors.map(doc => (
+                  <tr key={doc.id}>
+                    <td className="font-medium text-white">{doc.full_name}</td>
+                    <td className="text-muted text-xs">{doc.specialization}</td>
+                    <td><span className={`badge ${SHIFT_BADGE[doc.shift]}`}>{doc.shift}</span></td>
+                    <td><span className={`badge ${SHIFT_BADGE[doc.shift]}`}>{doc.shift}</span></td>
+                    <td><span className={`badge ${doc.shift === "Morning" ? "badge-yellow" : doc.shift === "Evening" ? "badge-blue" : "badge-purple"}`}>{doc.shift}</span></td>
+                    <td><span className={`badge ${SHIFT_BADGE[doc.shift]}`}>{doc.shift}</span></td>
+                    <td><span className={`badge ${doc.shift === "Night" ? "badge-purple" : "badge-yellow"}`}>{doc.shift === "Night" ? "Night" : "Morning"}</span></td>
+                    <td><span className="badge badge-gray">Off</span></td>
+                    <td><span className="badge badge-gray">Off</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      <NewDoctorModal open={showNewModal} onClose={() => setShowNewModal(false)} />
+      <EditDoctorModal open={!!editDoctor} onClose={() => setEditDoctor(null)} doctor={editDoctor} />
+      <EditStaffModal open={!!editStaff} onClose={() => setEditStaff(null)} staffMember={editStaff} />
     </div>
   );
 }

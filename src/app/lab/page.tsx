@@ -5,6 +5,8 @@ import { useState } from "react";
 import { Plus, Search, Upload, Eye, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
 import type { LabTest } from "@/types";
+import { NewLabTestModal } from "@/components/modules/NewLabTestModal";
+import { LabResultEntryModal } from "@/components/modules/LabResultEntryModal";
 
 const STATUS_BADGE: Record<LabTest["status"],string> = {
   "Ordered":"badge-blue","Sample Collected":"badge-yellow","Processing":"badge-purple","Ready":"badge-green","Reviewed":"badge-gray",
@@ -14,6 +16,8 @@ const STATUS_STEPS: LabTest["status"][] = ["Ordered","Sample Collected","Process
 export default function LabPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [showNewModal, setShowNewModal] = useState(false);
+  const [entryTest, setEntryTest] = useState<{id: number; test_name: string; test_category: string; patient_name?: string} | null>(null);
   const qc = useQueryClient();
 
   const { data: tests = [], isLoading } = useQuery({
@@ -32,7 +36,7 @@ export default function LabPage() {
     <div>
       <div className="page-header">
         <div><h1 className="page-title">Lab & Diagnostics</h1><p className="page-subtitle">{tests.length} tests total</p></div>
-        <button className="btn btn-primary"><Plus size={14} />Order Test</button>
+        <button onClick={() => setShowNewModal(true)} className="btn btn-primary"><Plus size={14} />Order Test</button>
       </div>
 
       {/* Status pipeline */}
@@ -105,7 +109,7 @@ export default function LabPage() {
                             }}
                             title="Advance Status"><CheckCircle size={12} /></button>
                         )}
-                        <button className="icon-btn hover:!text-accent" title="Upload Report"><Upload size={12} /></button>
+                        <button className="icon-btn hover:!text-accent" title="Enter Result" onClick={() => setEntryTest({ id: t.id, test_name: t.test_name, test_category: t.test_category, patient_name: t.patient_name })}><Upload size={12} /></button>
                       </div>
                     </td>
                   </tr>
@@ -114,6 +118,9 @@ export default function LabPage() {
             </table>
           </div>}
       </div>
+
+      <NewLabTestModal open={showNewModal} onClose={() => setShowNewModal(false)} />
+      {entryTest && <LabResultEntryModal labTest={entryTest} open={!!entryTest} onClose={() => setEntryTest(null)} />}
     </div>
   );
 }

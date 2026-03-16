@@ -2,8 +2,13 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   Patient, Doctor, Appointment, Prescription, PrescriptionDrug,
   LabTest, Ward, Bed, Invoice, InvoiceItem, InsuranceClaim, InventoryItem,
-  DashboardStats, AuditLog, Staff, VitalSigns,
+  DashboardStats, AuditLog, Staff, VitalSigns, User, Setting,
   PatientStatus, AppointmentStatus, BedStatus, InvoiceStatus, ClaimStatus,
+  TaxSetting, PaymentBatch, PaymentBatchItem, MessageTemplate, MessageLog,
+  Employee, LeaveRequest, Attendance, AssetCategory, Asset, AssetMaintenance,
+  OpdToken, DischargeSummary, DischargeMedication,
+  OtSchedule, OtTheatre, EmergencyCase, BloodDonor, BloodInventory, BloodRequest,
+  Ambulance, AmbulanceCall, ExpenseCategory, Expense, Notification, RolePermission,
 } from "@/types";
 
 const cmd = <T>(command: string, args?: Record<string, unknown>) =>
@@ -66,8 +71,10 @@ export const getWards                = ()               => cmd<Ward[]>("get_ward
 export const getBeds                 = (ward_id?: number) => cmd<Bed[]>("get_beds", { ward_id });
 export const admitPatient            = (bed_id: number, patient_id: number, expected_discharge?: string) => cmd<void>("admit_patient", { bed_id, patient_id, expected_discharge });
 export const dischargePatient        = (bed_id: number) => cmd<void>("discharge_patient", { bed_id });
+export const transferPatient        = (from_bed_id: number, to_bed_id: number) => cmd<void>("transfer_patient", { from_bed_id, to_bed_id });
 export const updateBedStatus         = (bed_id: number, status: BedStatus) => cmd<void>("update_bed_status", { bed_id, status });
 export const createWard              = (data: Omit<Ward,"id">) => cmd<Ward>("create_ward", { data });
+export const createWardWithBeds      = (data: Omit<Ward,"id">) => cmd<Ward>("create_ward_with_beds", { data });
 
 // Billing
 export const getInvoices             = (status?: InvoiceStatus, patient_id?: number) => cmd<Invoice[]>("get_invoices", { status, patient_id });
@@ -98,3 +105,100 @@ export const getAuditLogs            = (limit?: number, entity?: string) => cmd<
 // Sync
 export const syncToCloud             = () => cmd<{ synced: number; errors: number }>("sync_to_cloud");
 export const getSyncStatus           = () => cmd<{ last_sync: string; pending: number }>("get_sync_status");
+
+// Settings
+export const getSetting              = (key: string) => cmd<string | null>("get_setting", { key });
+export const setSetting              = (key: string, value: string) => cmd<void>("set_setting", { key, value });
+export const getAllSettings          = () => cmd<Setting[]>("get_all_settings");
+export const backupDatabase          = () => cmd<string>("backup_database");
+
+// Users & Auth
+export const getUsers                = () => cmd<User[]>("get_users");
+export const createUser              = (data: { username: string; password: string; role: string; full_name: string; department?: string }) => cmd<User>("create_user", { data });
+export const loginUser               = (username: string, password: string) => cmd<User>("login_user", { username, password });
+export const updateUserStatus        = (id: number, is_active: boolean) => cmd<void>("update_user_status", { id, is_active });
+export const deleteUser              = (id: number)     => cmd<void>("delete_user", { id });
+
+// Tax Settings
+export const getTaxSettings          = ()               => cmd<TaxSetting[]>("get_tax_settings");
+export const createTaxSetting        = (data: { tax_name: string; tax_type?: string; rate: number; cgst_rate?: number; sgst_rate?: number; igst_rate?: number }) => cmd<TaxSetting>("create_tax_setting", { data });
+
+// Revenue Cycle - Payment Batches
+export const getPaymentBatches       = ()               => cmd<PaymentBatch[]>("get_payment_batches");
+export const createPaymentBatch     = (data: { batch_date: string; created_by?: string }) => cmd<PaymentBatch>("create_payment_batch", { data });
+export const addPaymentBatchItem    = (batch_id: number, invoice_id: number, amount: number, payment_method: string, reference_no?: string) => cmd<PaymentBatchItem>("add_payment_batch_item", { batch_id, invoice_id, amount, payment_method, reference_no });
+
+// WhatsApp & SMS
+export const getMessageTemplates     = ()               => cmd<MessageTemplate[]>("get_message_templates");
+export const createMessageTemplate  = (data: { template_name: string; message_type: string; template_body: string }) => cmd<MessageTemplate>("create_message_template", { data });
+export const sendMessage            = (data: { patient_id?: number; phone: string; message_type: string; template_name?: string; message_body: string }) => cmd<MessageLog>("send_message", { data });
+export const getMessageLogs          = (limit?: number)  => cmd<MessageLog[]>("get_message_logs", { limit });
+
+// Payroll & HR
+export const getEmployees           = (status?: string) => cmd<Employee[]>("get_employees", { status });
+export const createEmployee         = (data: { staff_id?: number; first_name: string; last_name: string; email: string; phone: string; department: string; designation: string; employee_type?: string; date_of_join: string; date_of_birth?: string; gender?: string; address?: string; bank_name?: string; bank_account?: string; ifsc_code?: string; pan_number?: string; aadhar_number?: string; basic_salary: number }) => cmd<Employee>("create_employee", { data });
+export const getLeaveRequests        = (status?: string) => cmd<LeaveRequest[]>("get_leave_requests", { status });
+export const createLeaveRequest     = (data: { employee_id: number; leave_type: string; start_date: string; end_date: string; total_days: number; reason?: string }) => cmd<LeaveRequest>("create_leave_request", { data });
+export const approveLeaveRequest     = (id: number, approved_by: string) => cmd<void>("approve_leave_request", { id, approved_by });
+export const getAttendance           = (date?: string)  => cmd<Attendance[]>("get_attendance", { date });
+export const markAttendance          = (data: { employee_id: number; attendance_date: string; check_in?: string; check_out?: string; status: string }) => cmd<Attendance>("mark_attendance", { data });
+
+// Asset Management
+export const getAssetCategories      = ()               => cmd<AssetCategory[]>("get_asset_categories");
+export const createAssetCategory    = (data: { category_name: string; depreciation_rate: number; description?: string }) => cmd<AssetCategory>("create_asset_category", { data });
+export const getAssets               = (status?: string) => cmd<Asset[]>("get_assets", { status });
+export const createAsset            = (data: { asset_name: string; category_id: number; purchase_date: string; purchase_cost: number; warranty_expiry?: string; location?: string; assigned_to?: number }) => cmd<Asset>("create_asset", { data });
+export const getAssetMaintenance     = (asset_id?: number) => cmd<AssetMaintenance[]>("get_asset_maintenance", { asset_id });
+export const createAssetMaintenance  = (data: { asset_id: number; maintenance_type: string; description: string; maintenance_date: string; cost?: number; vendor?: string; next_due_date?: string }) => cmd<AssetMaintenance>("create_asset_maintenance", { data });
+
+// OPD Queue
+export const getOpdTokens           = (date?: string, status?: string) => cmd<OpdToken[]>("get_opd_tokens", { date, status });
+export const createOpdToken         = (data: { patient_id: number; doctor_id: number; department: string; queue_date: string }) => cmd<OpdToken>("create_opd_token", { data });
+export const updateTokenStatus       = (id: number, new_status: string) => cmd<OpdToken>("update_token_status", { id, new_status });
+
+// Discharge Summary
+export const getDischargeSummaries   = (patient_id?: number) => cmd<DischargeSummary[]>("get_discharge_summaries", { patient_id });
+export const createDischargeSummary = (
+  data: Omit<DischargeSummary,"id"|"summary_code"|"patient_name"|"doctor_name"|"medications"|"created_at">,
+  medications: { medication: string; dosage: string; duration: string; instructions?: string }[]
+) => cmd<DischargeSummary>("create_discharge_summary", { data, medications });
+
+// Operation Theatre
+export const getOtSchedules = (date?: string, status?: string) => cmd<OtSchedule[]>("get_ot_schedules", { date, status });
+export const createOtSchedule = (data: { patient_id: number; surgeon_id: number; anesthesiologist_id?: number; ot_theatre_id: number; surgery_type: string; surgery_date: string; start_time: string; priority?: string; anesthesia_type?: string; notes?: string }) => cmd<OtSchedule>("create_ot_schedule", { data });
+export const getOtTheatres = () => cmd<OtTheatre[]>("get_ot_theatres");
+
+// Emergency / ER
+export const getEmergencyCases = (status?: string) => cmd<EmergencyCase[]>("get_emergency_cases", { status });
+export const createEmergencyCase = (data: { patient_id?: number; patient_name: string; patient_phone?: string; triage_level: string; chief_complaint: string; vital_signs?: string }) => cmd<EmergencyCase>("create_emergency_case", { data });
+export const updateEmergencyStatus = (id: number, status: string, outcome?: string, admitted_to?: number) => cmd<void>("update_emergency_status", { id, status, outcome, admitted_to });
+
+// Blood Bank
+export const getBloodDonors = (status?: string) => cmd<BloodDonor[]>("get_blood_donors", { status });
+export const createBloodDonor = (data: { full_name: string; dob?: string; gender?: string; phone: string; email?: string; blood_group: string }) => cmd<BloodDonor>("create_blood_donor", { data });
+export const getBloodInventory = () => cmd<BloodInventory[]>("get_blood_inventory");
+export const createBloodInventory = (data: { blood_group: string; component?: string; units: number; collection_date: string; expiry_date: string; donor_id?: number }) => cmd<BloodInventory>("create_blood_inventory", { data });
+export const getBloodRequests = (status?: string) => cmd<BloodRequest[]>("get_blood_requests", { status });
+export const createBloodRequest = (data: { patient_id: number; blood_group: string; units_required: number; urgency?: string }) => cmd<BloodRequest>("create_blood_request", { data });
+
+// Ambulance
+export const getAmbulances = () => cmd<Ambulance[]>("get_ambulances");
+export const createAmbulance = (data: { ambulance_number: string; vehicle_type?: string; license_number: string; insurance_expiry?: string }) => cmd<Ambulance>("create_ambulance", { data });
+export const getAmbulanceCalls = (status?: string) => cmd<AmbulanceCall[]>("get_ambulance_calls", { status });
+export const createAmbulanceCall = (data: { patient_id?: number; patient_name: string; patient_phone: string; pickup_address: string; destination?: string; ambulance_id?: number; driver_name?: string; notes?: string }) => cmd<AmbulanceCall>("create_ambulance_call", { data });
+export const updateAmbulanceStatus = (id: number, status: string) => cmd<void>("update_ambulance_status", { id, status });
+
+// Expense Management
+export const getExpenseCategories = () => cmd<ExpenseCategory[]>("get_expense_categories");
+export const createExpenseCategory = (data: { category_name: string; description?: string }) => cmd<ExpenseCategory>("create_expense_category", { data });
+export const getExpenses = (status?: string) => cmd<Expense[]>("get_expenses", { status });
+export const createExpense = (data: { category_id: number; amount: number; expense_date: string; description: string; vendor?: string; payment_method?: string; receipt_number?: string }) => cmd<Expense>("create_expense", { data });
+
+// Notifications
+export const getNotifications = (limit?: number) => cmd<Notification[]>("get_notifications", { limit });
+export const createNotification = (data: { title: string; message: string; notification_type?: string; target_role?: string }) => cmd<Notification>("create_notification", { data });
+export const markNotificationRead = (id: number) => cmd<void>("mark_notification_read", { id });
+
+// Role Permissions
+export const getRolePermissions = (role?: string) => cmd<RolePermission[]>("get_role_permissions", { role });
+export const updateRolePermission = (data: { role: string; module: string; can_view: boolean; can_create: boolean; can_edit: boolean; can_delete: boolean }) => cmd<RolePermission>("update_role_permission", { data });
