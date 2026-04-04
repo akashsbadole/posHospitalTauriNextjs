@@ -42,7 +42,10 @@ export function NewStaffModal({ open, onClose }: Props) {
   });
 
   const createMut = useMutation({
-    mutationFn: (data: F) => createStaff(data as any),
+  mutationFn: (data: F) => createStaff({
+    ...data,
+    salary: data.salary || null,
+  } as any),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["staff"] });
       toast.success("Staff member added!");

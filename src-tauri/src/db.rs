@@ -553,7 +553,8 @@ CREATE TABLE IF NOT EXISTS attendance (
     check_out       TEXT,
     work_hours      REAL DEFAULT 0,
     status          TEXT NOT NULL DEFAULT 'Present',
-    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(employee_id, attendance_date)
 );
 
 -- ─────────────────────────────────────────
@@ -600,7 +601,7 @@ CREATE TABLE IF NOT EXISTS asset_maintenance (
 CREATE TABLE IF NOT EXISTS opd_tokens (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     token_number    INTEGER NOT NULL,
-    patient_id      INTEGER NOT NULL REFERENCES patients(id),
+    patient_id      INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
     doctor_id       INTEGER NOT NULL REFERENCES doctors(id),
     department      TEXT NOT NULL,
     queue_date      TEXT NOT NULL,
@@ -630,7 +631,7 @@ CREATE TABLE IF NOT EXISTS opd_queue_settings (
 CREATE TABLE IF NOT EXISTS discharge_summaries (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     summary_code    TEXT NOT NULL UNIQUE,
-    patient_id      INTEGER NOT NULL REFERENCES patients(id),
+    patient_id      INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
     admission_date  TEXT NOT NULL,
     discharge_date  TEXT NOT NULL,
     discharge_type  TEXT NOT NULL DEFAULT 'Regular',
@@ -661,7 +662,7 @@ CREATE TABLE IF NOT EXISTS discharge_medications (
 CREATE TABLE IF NOT EXISTS ot_schedules (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     surgery_code    TEXT NOT NULL UNIQUE,
-    patient_id      INTEGER NOT NULL REFERENCES patients(id),
+    patient_id      INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
     surgeon_id      INTEGER NOT NULL REFERENCES doctors(id),
     anesthesiologist_id INTEGER REFERENCES doctors(id),
     ot_theatre_id  INTEGER NOT NULL,
@@ -691,7 +692,7 @@ CREATE TABLE IF NOT EXISTS ot_theatres (
 CREATE TABLE IF NOT EXISTS emergency_cases (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     case_code       TEXT NOT NULL UNIQUE,
-    patient_id      INTEGER REFERENCES patients(id),
+    patient_id      INTEGER REFERENCES patients(id) ON DELETE CASCADE,
     patient_name    TEXT NOT NULL,
     patient_phone   TEXT,
     arrival_time    TEXT NOT NULL,
@@ -740,7 +741,7 @@ CREATE TABLE IF NOT EXISTS blood_inventory (
 CREATE TABLE IF NOT EXISTS blood_requests (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     request_code    TEXT NOT NULL UNIQUE,
-    patient_id      INTEGER NOT NULL REFERENCES patients(id),
+    patient_id      INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
     blood_group     TEXT NOT NULL,
     units_required  INTEGER NOT NULL,
     units_issued    INTEGER NOT NULL DEFAULT 0,
@@ -767,7 +768,7 @@ CREATE TABLE IF NOT EXISTS ambulances (
 CREATE TABLE IF NOT EXISTS ambulance_calls (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     call_code       TEXT NOT NULL UNIQUE,
-    patient_id      INTEGER REFERENCES patients(id),
+    patient_id      INTEGER REFERENCES patients(id) ON DELETE CASCADE,
     patient_name    TEXT NOT NULL,
     patient_phone   TEXT NOT NULL,
     pickup_address  TEXT NOT NULL,

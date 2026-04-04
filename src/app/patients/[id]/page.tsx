@@ -4,6 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { getPatientById, getPatientVitals, getAppointments, getPrescriptions, getLabTests, getInvoices } from "@/lib/tauri";
 import { ArrowLeft, Edit, Calendar, Pill, FlaskConical, FileText, Activity, User } from "lucide-react";
 import { useState } from "react";
+import { EditPatientModal } from "@/components/modules/EditPatientModal";
 
 const TABS = ["Overview", "Appointments", "Prescriptions", "Lab Tests", "Invoices", "Vitals"] as const;
 type Tab = typeof TABS[number];
@@ -12,6 +13,7 @@ export default function PatientDetailPage() {
   const params = useParams();
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("Overview");
+  const [showEdit, setShowEdit] = useState(false);
   const patientId = Number(params.id);
 
   const { data: patient, isLoading: loadingPatient } = useQuery({
@@ -24,12 +26,10 @@ export default function PatientDetailPage() {
     queryFn: () => getPatientVitals(patientId),
   });
 
-  const { data: appointments = [] } = useQuery({
+  const { data: patientAppointments = [] } = useQuery({
     queryKey: ["patient-appointments", patientId],
-    queryFn: () => getAppointments(undefined, undefined),
+    queryFn: () => getAppointments(undefined, undefined, patientId),
   });
-
-  const patientAppointments = appointments.filter(a => a.patient_id === patientId);
 
   const { data: prescriptions = [] } = useQuery({
     queryKey: ["patient-prescriptions", patientId],
@@ -78,7 +78,7 @@ export default function PatientDetailPage() {
               </div>
             </div>
           </div>
-          <button className="btn btn-primary"><Edit size={14} /> Edit Patient</button>
+          <button onClick={() => setShowEdit(true)} className="btn btn-primary"><Edit size={14} /> Edit Patient</button>
         </div>
 
         <div className="border-t border-border px-5 py-4 grid grid-cols-4 gap-4">
@@ -244,6 +244,14 @@ export default function PatientDetailPage() {
           </div>
         )}
       </div>
+
+      {showEdit && patient && (
+        <EditPatientModal
+          open={showEdit}
+          patient={patient}
+          onClose={() => setShowEdit(false)}
+        />
+      )}
     </div>
   );
 }

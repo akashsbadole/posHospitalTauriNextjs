@@ -19,7 +19,7 @@ describe('Appointment CRUD Operations', () => {
 
       const result = await tauri.getAppointments();
 
-      expect(mockInvoke).toHaveBeenCalledWith('get_appointments', { date: undefined, doctor_id: undefined });
+      expect(mockInvoke).toHaveBeenCalledWith('get_appointments', { date: undefined, doctor_id: undefined, patient_id: undefined });
       expect(result).toEqual(db.appointments);
     });
 
@@ -30,7 +30,7 @@ describe('Appointment CRUD Operations', () => {
 
       const result = await tauri.getAppointments('2024-01-15');
 
-      expect(mockInvoke).toHaveBeenCalledWith('get_appointments', { date: '2024-01-15', doctor_id: undefined });
+      expect(mockInvoke).toHaveBeenCalledWith('get_appointments', { date: '2024-01-15', doctor_id: undefined, patient_id: undefined });
       expect(result).toEqual(filteredAppointments);
     });
 
@@ -41,7 +41,7 @@ describe('Appointment CRUD Operations', () => {
 
       const result = await tauri.getAppointments(undefined, 1);
 
-      expect(mockInvoke).toHaveBeenCalledWith('get_appointments', { date: undefined, doctor_id: 1 });
+      expect(mockInvoke).toHaveBeenCalledWith('get_appointments', { date: undefined, doctor_id: 1, patient_id: undefined });
       expect(result.length).toBeGreaterThanOrEqual(0);
     });
 

@@ -23,6 +23,43 @@ fn now() -> String {
     chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()
 }
 
+fn check_permission(state: &State<AppState>, username: Option<String>, module: &str, action: &str) -> Result<(), String> {
+    let user = username.unwrap_or_else(|| "admin".to_string()); // Default to admin if not provided for backward compatibility
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+
+    // Admin always has full access
+    let role: String = conn.query_row(
+        "SELECT role FROM users WHERE username = ?1 AND is_active = 1",
+        params![user],
+        |r| r.get(0)
+    ).map_err(|_| "Unauthorized: User not found or inactive".to_string())?;
+
+    if role == "Admin" {
+        return Ok(());
+    }
+
+    let field = match action {
+        "view" => "can_view",
+        "create" => "can_create",
+        "edit" => "can_edit",
+        "delete" => "can_delete",
+        _ => return Err("Invalid action".to_string()),
+    };
+
+    let sql = format!("SELECT {} FROM role_permissions WHERE role = ?1 AND module = ?2", field);
+    let allowed: i64 = conn.query_row(
+        &sql,
+        params![role, module],
+        |r| r.get(0)
+    ).unwrap_or(0);
+
+    if allowed == 1 {
+        Ok(())
+    } else {
+        Err(format!("Unauthorized: No {} permission for {}", action, module))
+    }
+}
+
 // ─── DASHBOARD ────────────────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -177,22 +214,45 @@ pub fn create_patient(state: State<AppState>, data: CreatePatient) -> Result<Pat
 
 #[tauri::command]
 pub fn update_patient(state: State<AppState>, id: i64, data: serde_json::Value) -> Result<Patient, String> {
-    let conn = state.pool.get().map_err(|e| e.to_string())?;
-    if let Some(status) = data.get("status").and_then(|v| v.as_str()) {
-        conn.execute("UPDATE patients SET status = ?1, updated_at = datetime('now') WHERE id = ?2", params![status, id]).map_err(|e| e.to_string())?;
+    let mut conn = state.pool.get().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    let fields = [
+        "full_name", "dob", "gender", "phone", "email", "blood_group", "address",
+        "emergency_contact", "emergency_phone", "allergies", "chronic_conditions",
+        "department", "assigned_doctor_id", "status", "insurance_provider",
+        "insurance_number", "photo_path"
+    ];
+
+    for field in fields {
+        if let Some(value) = data.get(field) {
+            let sql = format!("UPDATE patients SET {} = ?1, updated_at = datetime('now') WHERE id = ?2", field);
+            if value.is_null() {
+                tx.execute(&sql, params![rusqlite::types::Null, id]).map_err(|e| e.to_string())?;
+            } else if let Some(s) = value.as_str() {
+                tx.execute(&sql, params![s, id]).map_err(|e| e.to_string())?;
+            } else if let Some(i) = value.as_i64() {
+                tx.execute(&sql, params![i, id]).map_err(|e| e.to_string())?;
+            } else if let Some(f) = value.as_f64() {
+                tx.execute(&sql, params![f, id]).map_err(|e| e.to_string())?;
+            } else if let Some(b) = value.as_bool() {
+                tx.execute(&sql, params![if b { 1 } else { 0 }, id]).map_err(|e| e.to_string())?;
+            }
+        }
     }
-    if let Some(name) = data.get("full_name").and_then(|v| v.as_str()) {
-        conn.execute("UPDATE patients SET full_name = ?1, updated_at = datetime('now') WHERE id = ?2", params![name, id]).map_err(|e| e.to_string())?;
-    }
+
+    tx.commit().map_err(|e| e.to_string())?;
+
     audit::log(&state.pool, "System", "Patient updated", "patient", Some(id), None);
     get_patient_by_id(state, id)
 }
 
 #[tauri::command]
-pub fn delete_patient(state: State<AppState>, id: i64) -> Result<(), String> {
+pub fn delete_patient(state: State<AppState>, id: i64, requester: Option<String>) -> Result<(), String> {
+    check_permission(&state, requester.clone(), "Patients", "delete")?;
     let conn = state.pool.get().map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM patients WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
-    audit::log(&state.pool, "System", "Patient deleted", "patient", Some(id), None);
+    audit::log(&state.pool, &requester.unwrap_or_else(|| "System".to_string()), "Patient deleted", "patient", Some(id), None);
     Ok(())
 }
 
@@ -226,6 +286,9 @@ pub fn add_vital_signs(state: State<AppState>, data: VitalSigns) -> Result<Vital
                 data.weight_kg, data.height_cm, data.notes],
     ).map_err(|e| e.to_string())?;
     let id = conn.last_insert_rowid();
+
+    audit::log(&state.pool, "System", "Vitals recorded", "patient", Some(data.patient_id), None);
+
     Ok(VitalSigns { id, ..data })
 }
 
@@ -283,10 +346,34 @@ pub fn create_doctor(state: State<AppState>, data: CreateDoctor) -> Result<Docto
 
 #[tauri::command]
 pub fn update_doctor(state: State<AppState>, id: i64, data: serde_json::Value) -> Result<Doctor, String> {
-    let conn = state.pool.get().map_err(|e| e.to_string())?;
-    if let Some(status) = data.get("availability_status").and_then(|v| v.as_str()) {
-        conn.execute("UPDATE doctors SET availability_status = ?1 WHERE id = ?2", params![status, id]).map_err(|e| e.to_string())?;
+    let mut conn = state.pool.get().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    let fields = [
+        "full_name", "specialization", "phone", "email", "qualification",
+        "availability_status", "shift", "experience_years", "consultation_fee"
+    ];
+
+    for field in fields {
+        if let Some(value) = data.get(field) {
+            let sql = format!("UPDATE doctors SET {} = ?1 WHERE id = ?2", field);
+            if value.is_null() {
+                tx.execute(&sql, params![rusqlite::types::Null, id]).map_err(|e| e.to_string())?;
+            } else if let Some(s) = value.as_str() {
+                tx.execute(&sql, params![s, id]).map_err(|e| e.to_string())?;
+            } else if let Some(i) = value.as_i64() {
+                tx.execute(&sql, params![i, id]).map_err(|e| e.to_string())?;
+            } else if let Some(f) = value.as_f64() {
+                tx.execute(&sql, params![f, id]).map_err(|e| e.to_string())?;
+            } else if let Some(b) = value.as_bool() {
+                tx.execute(&sql, params![if b { 1 } else { 0 }, id]).map_err(|e| e.to_string())?;
+            }
+        }
     }
+
+    tx.commit().map_err(|e| e.to_string())?;
+
+    audit::log(&state.pool, "System", "Doctor updated", "staff", Some(id), None);
     get_doctor_by_id(state, id)
 }
 
@@ -336,10 +423,32 @@ pub fn create_staff(state: State<AppState>, data: CreateStaff) -> Result<Staff, 
 
 #[tauri::command]
 pub fn update_staff(state: State<AppState>, id: i64, data: serde_json::Value) -> Result<Staff, String> {
-    let conn = state.pool.get().map_err(|e| e.to_string())?;
-    if let Some(status) = data.get("status").and_then(|v| v.as_str()) {
-        conn.execute("UPDATE staff SET status = ?1 WHERE id = ?2", params![status, id]).map_err(|e| e.to_string())?;
+    let mut conn = state.pool.get().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    let fields = [
+        "full_name", "role", "department", "phone", "email", "shift", "status", "join_date", "salary"
+    ];
+
+    for field in fields {
+        if let Some(value) = data.get(field) {
+            let sql = format!("UPDATE staff SET {} = ?1 WHERE id = ?2", field);
+            if value.is_null() {
+                tx.execute(&sql, params![rusqlite::types::Null, id]).map_err(|e| e.to_string())?;
+            } else if let Some(s) = value.as_str() {
+                tx.execute(&sql, params![s, id]).map_err(|e| e.to_string())?;
+            } else if let Some(i) = value.as_i64() {
+                tx.execute(&sql, params![i, id]).map_err(|e| e.to_string())?;
+            } else if let Some(f) = value.as_f64() {
+                tx.execute(&sql, params![f, id]).map_err(|e| e.to_string())?;
+            } else if let Some(b) = value.as_bool() {
+                tx.execute(&sql, params![if b { 1 } else { 0 }, id]).map_err(|e| e.to_string())?;
+            }
+        }
     }
+
+    tx.commit().map_err(|e| e.to_string())?;
+
     let s = conn.query_row("SELECT id, staff_code, full_name, role, department, phone, email, shift, status, join_date, salary FROM staff WHERE id = ?1", params![id], |r| Ok(Staff {
         id: r.get(0)?, staff_code: r.get(1)?, full_name: r.get(2)?, role: r.get(3)?,
         department: r.get(4)?, phone: r.get(5)?, email: r.get(6)?,
@@ -349,16 +458,18 @@ pub fn update_staff(state: State<AppState>, id: i64, data: serde_json::Value) ->
 }
 
 #[tauri::command]
-pub fn delete_staff(state: State<AppState>, id: i64) -> Result<(), String> {
+pub fn delete_staff(state: State<AppState>, id: i64, requester: Option<String>) -> Result<(), String> {
+    check_permission(&state, requester.clone(), "Staff", "delete")?;
     let conn = state.pool.get().map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM staff WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
+    audit::log(&state.pool, &requester.unwrap_or_else(|| "System".to_string()), "Staff deleted", "staff", Some(id), None);
     Ok(())
 }
 
 // ─── APPOINTMENTS ─────────────────────────────────────────────────────────────
 
 #[tauri::command]
-pub fn get_appointments(state: State<AppState>, date: Option<String>, doctor_id: Option<i64>) -> Result<Vec<Appointment>, String> {
+pub fn get_appointments(state: State<AppState>, date: Option<String>, doctor_id: Option<i64>, patient_id: Option<i64>) -> Result<Vec<Appointment>, String> {
     let conn = state.pool.get().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
         "SELECT a.id, a.appointment_code, a.patient_id, p.full_name, a.doctor_id, d.full_name,
@@ -369,9 +480,10 @@ pub fn get_appointments(state: State<AppState>, date: Option<String>, doctor_id:
          JOIN doctors d ON a.doctor_id = d.id
          WHERE (?1 IS NULL OR a.appointment_date = ?1)
            AND (?2 IS NULL OR a.doctor_id = ?2)
+           AND (?3 IS NULL OR a.patient_id = ?3)
          ORDER BY a.appointment_time ASC"
     ).map_err(|e| e.to_string())?;
-    let appts = stmt.query_map(params![date, doctor_id], |r| Ok(Appointment {
+    let appts = stmt.query_map(params![date, doctor_id, patient_id], |r| Ok(Appointment {
         id: r.get(0)?, appointment_code: r.get(1)?, patient_id: r.get(2)?, patient_name: r.get(3)?,
         doctor_id: r.get(4)?, doctor_name: r.get(5)?, department: r.get(6)?,
         appointment_date: r.get(7)?, appointment_time: r.get(8)?, appt_type: r.get(9)?,
@@ -420,8 +532,41 @@ pub fn create_appointment(state: State<AppState>, data: CreateAppointment) -> Re
 
 #[tauri::command]
 pub fn update_appointment_status(state: State<AppState>, id: i64, status: String) -> Result<(), String> {
-    let conn = state.pool.get().map_err(|e| e.to_string())?;
-    conn.execute("UPDATE appointments SET status = ?1 WHERE id = ?2", params![status, id]).map_err(|e| e.to_string())?;
+    let mut conn = state.pool.get().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    tx.execute("UPDATE appointments SET status = ?1 WHERE id = ?2", params![status, id]).map_err(|e| e.to_string())?;
+
+    // If appointment is checked in, automatically create an OPD token if it doesn't exist
+    if status == "Checked In" {
+        let (patient_id, doctor_id, department, appointment_date): (i64, i64, String, String) = tx.query_row(
+            "SELECT patient_id, doctor_id, department, appointment_date FROM appointments WHERE id = ?1",
+            params![id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+        ).map_err(|e| e.to_string())?;
+
+        let exists: i64 = tx.query_row(
+            "SELECT COUNT(*) FROM opd_tokens WHERE patient_id = ?1 AND doctor_id = ?2 AND queue_date = ?3",
+            params![patient_id, doctor_id, appointment_date],
+            |r| r.get(0)
+        ).unwrap_or(0);
+
+        if exists == 0 {
+            let max_token: i64 = tx.query_row(
+                "SELECT COALESCE(MAX(token_number), 0) FROM opd_tokens WHERE queue_date = ?1 AND doctor_id = ?2",
+                params![appointment_date, doctor_id],
+                |r| r.get(0)
+            ).unwrap_or(0);
+
+            tx.execute(
+                "INSERT INTO opd_tokens (token_number, patient_id, doctor_id, department, queue_date, status) VALUES (?1, ?2, ?3, ?4, ?5, 'Waiting')",
+                params![max_token + 1, patient_id, doctor_id, department, appointment_date]
+            ).map_err(|e| e.to_string())?;
+        }
+    }
+
+    tx.commit().map_err(|e| e.to_string())?;
+
     audit::log(&state.pool, "System", "Appointment status updated", "appointment", Some(id), Some(&status));
     Ok(())
 }
@@ -512,21 +657,27 @@ pub fn get_prescription_by_id(state: State<AppState>, id: i64) -> Result<Prescri
 
 #[tauri::command]
 pub fn create_prescription(state: State<AppState>, data: CreatePrescription, drugs: Vec<CreatePrescriptionDrug>) -> Result<Prescription, String> {
-    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    let mut conn = state.pool.get().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
     let code = new_code("RX");
     let status = data.status.as_deref().unwrap_or("Active");
-    conn.execute(
+    tx.execute(
         "INSERT INTO prescriptions (rx_code, patient_id, doctor_id, issue_date, valid_until, status, diagnosis, notes) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
         params![code, data.patient_id, data.doctor_id, data.issue_date, data.valid_until, status, data.diagnosis, data.notes],
     ).map_err(|e| e.to_string())?;
-    let rx_id = conn.last_insert_rowid();
+
+    let rx_id = tx.last_insert_rowid();
     for drug in &drugs {
         let route = drug.route.as_deref().unwrap_or("Oral");
-        conn.execute(
+        tx.execute(
             "INSERT INTO prescription_drugs (prescription_id, drug_name, dosage, frequency, duration_days, route, instructions, refills_remaining) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
             params![rx_id, drug.drug_name, drug.dosage, drug.frequency, drug.duration_days, route, drug.instructions, drug.refills_remaining],
         ).map_err(|e| e.to_string())?;
     }
+
+    tx.commit().map_err(|e| e.to_string())?;
+
     audit::log(&state.pool, "System", "Prescription created", "prescription", Some(rx_id), Some(&code));
     get_prescription_by_id(state, rx_id)
 }
@@ -664,51 +815,61 @@ pub fn get_beds(state: State<AppState>, ward_id: Option<i64>) -> Result<Vec<Bed>
 
 #[tauri::command]
 pub fn admit_patient(state: State<AppState>, bed_id: i64, patient_id: i64, expected_discharge: Option<String>) -> Result<(), String> {
-    let conn = state.pool.get().map_err(|e| e.to_string())?;
-    conn.execute(
+    let mut conn = state.pool.get().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    tx.execute(
         "UPDATE beds SET status='Occupied', patient_id=?1, admission_date=date('now'), expected_discharge=?2 WHERE id=?3",
         params![patient_id, expected_discharge, bed_id],
     ).map_err(|e| e.to_string())?;
-    conn.execute("UPDATE patients SET status='Admitted' WHERE id=?1", params![patient_id]).map_err(|e| e.to_string())?;
+
+    tx.execute("UPDATE patients SET status='Admitted' WHERE id=?1", params![patient_id]).map_err(|e| e.to_string())?;
+
+    tx.commit().map_err(|e| e.to_string())?;
+
     audit::log(&state.pool, "System", "Patient admitted", "bed", Some(bed_id), Some(&format!("Patient #{}", patient_id)));
     Ok(())
 }
 
 #[tauri::command]
 pub fn discharge_patient(state: State<AppState>, bed_id: i64) -> Result<(), String> {
-    let conn = state.pool.get().map_err(|e| e.to_string())?;
-    let patient_id: Option<i64> = conn.query_row("SELECT patient_id FROM beds WHERE id = ?1", params![bed_id], |r| r.get(0)).ok().flatten();
-    conn.execute("UPDATE beds SET status='Available', patient_id=NULL, admission_date=NULL, expected_discharge=NULL WHERE id=?1", params![bed_id]).map_err(|e| e.to_string())?;
+    let mut conn = state.pool.get().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    let patient_id: Option<i64> = tx.query_row("SELECT patient_id FROM beds WHERE id = ?1", params![bed_id], |r| r.get(0)).ok().flatten();
+
+    tx.execute("UPDATE beds SET status='Available', patient_id=NULL, admission_date=NULL, expected_discharge=NULL WHERE id=?1", params![bed_id]).map_err(|e| e.to_string())?;
+
     if let Some(pid) = patient_id {
-        conn.execute("UPDATE patients SET status='Discharged' WHERE id=?1", params![pid]).map_err(|e| e.to_string())?;
+        tx.execute("UPDATE patients SET status='Discharged' WHERE id=?1", params![pid]).map_err(|e| e.to_string())?;
     }
+
+    tx.commit().map_err(|e| e.to_string())?;
+
     audit::log(&state.pool, "System", "Patient discharged", "bed", Some(bed_id), None);
     Ok(())
 }
 
 #[tauri::command]
 pub fn transfer_patient(state: State<AppState>, from_bed_id: i64, to_bed_id: i64) -> Result<(), String> {
-    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    let mut conn = state.pool.get().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
     
-    let patient_id: i64 = conn.query_row(
-        "SELECT patient_id FROM beds WHERE id = ?1", params![from_bed_id], |r| r.get(0)
+    let (patient_id, admission_date, expected_discharge): (i64, String, Option<String>) = tx.query_row(
+        "SELECT patient_id, admission_date, expected_discharge FROM beds WHERE id = ?1",
+        params![from_bed_id],
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))
     ).map_err(|e| e.to_string())?;
     
-    let admission_date: String = conn.query_row(
-        "SELECT admission_date FROM beds WHERE id = ?1", params![from_bed_id], |r| r.get(0)
-    ).map_err(|e| e.to_string())?;
+    tx.execute("UPDATE beds SET status='Available', patient_id=NULL, admission_date=NULL, expected_discharge=NULL WHERE id=?1", params![from_bed_id]).map_err(|e| e.to_string())?;
     
-    let expected_discharge: Option<String> = conn.query_row(
-        "SELECT expected_discharge FROM beds WHERE id = ?1", params![from_bed_id], |r| r.get(0)
-    ).ok().flatten();
-    
-    conn.execute("UPDATE beds SET status='Available', patient_id=NULL, admission_date=NULL, expected_discharge=NULL WHERE id=?1", params![from_bed_id]).map_err(|e| e.to_string())?;
-    
-    conn.execute(
+    tx.execute(
         "UPDATE beds SET status='Occupied', patient_id=?1, admission_date=?2, expected_discharge=?3 WHERE id=?4",
         params![patient_id, admission_date, expected_discharge, to_bed_id]
     ).map_err(|e| e.to_string())?;
     
+    tx.commit().map_err(|e| e.to_string())?;
+
     audit::log(&state.pool, "System", &format!("Patient transferred from bed {} to bed {}", from_bed_id, to_bed_id), "bed", Some(to_bed_id), None);
     Ok(())
 }
@@ -717,6 +878,7 @@ pub fn transfer_patient(state: State<AppState>, from_bed_id: i64, to_bed_id: i64
 pub fn update_bed_status(state: State<AppState>, bed_id: i64, status: String) -> Result<(), String> {
     let conn = state.pool.get().map_err(|e| e.to_string())?;
     conn.execute("UPDATE beds SET status = ?1 WHERE id = ?2", params![status, bed_id]).map_err(|e| e.to_string())?;
+    audit::log(&state.pool, "System", "Bed status updated", "bed", Some(bed_id), Some(&status));
     Ok(())
 }
 
@@ -734,22 +896,26 @@ pub fn create_ward(state: State<AppState>, data: Ward) -> Result<Ward, String> {
 
 #[tauri::command]
 pub fn create_ward_with_beds(state: State<AppState>, data: Ward) -> Result<Ward, String> {
-    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    let mut conn = state.pool.get().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
     let code = new_code("WD");
-    conn.execute(
+    tx.execute(
         "INSERT INTO wards (ward_name, ward_code, ward_type, total_beds, department) VALUES (?1,?2,?3,?4,?5)",
         params![data.ward_name, code, data.ward_type, data.total_beds, data.department],
     ).map_err(|e| e.to_string())?;
-    let ward_id = conn.last_insert_rowid();
+    let ward_id = tx.last_insert_rowid();
     
     for i in 1..=data.total_beds {
         let bed_num = format!("{:03}", i);
-        conn.execute(
+        tx.execute(
             "INSERT INTO beds (ward_id, bed_number, status) VALUES (?1, ?2, 'Available')",
             params![ward_id, bed_num],
         ).map_err(|e| e.to_string())?;
     }
     
+    tx.commit().map_err(|e| e.to_string())?;
+
     audit::log(&state.pool, "System", &format!("Created ward {} with {} beds", data.ward_name, data.total_beds), "wards", Some(ward_id), None);
     Ok(Ward { id: ward_id, ward_code: code, ..data })
 }
@@ -806,7 +972,9 @@ pub fn get_invoice_by_id(state: State<AppState>, id: i64) -> Result<Invoice, Str
 
 #[tauri::command]
 pub fn create_invoice(state: State<AppState>, data: CreateInvoice, items: Vec<CreateInvoiceItem>) -> Result<Invoice, String> {
-    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    let mut conn = state.pool.get().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
     let code = new_code("INV");
     let discount = data.discount.unwrap_or(0.0);
     let cgst_rate = data.cgst_rate.unwrap_or(0.0);
@@ -818,16 +986,19 @@ pub fn create_invoice(state: State<AppState>, data: CreateInvoice, items: Vec<Cr
     let igst = subtotal * igst_rate / 100.0;
     let tax = cgst + sgst + igst;
     let total = subtotal - discount + tax;
-    conn.execute(
+    tx.execute(
         "INSERT INTO invoices (invoice_code, patient_id, issue_date, due_date, status, subtotal, discount, tax, cgst, sgst, igst, total, paid_amount, balance, payment_method, notes) VALUES (?1,?2,?3,?4,'Pending',?5,?6,?7,?8,?9,?10,?11,0,?12,?13,?14)",
         params![code, data.patient_id, data.issue_date, data.due_date, subtotal, discount, tax, cgst, sgst, igst, total, total, data.payment_method, data.notes],
     ).map_err(|e| e.to_string())?;
-    let inv_id = conn.last_insert_rowid();
+    let inv_id = tx.last_insert_rowid();
     for item in &items {
         let item_total = item.quantity as f64 * item.unit_price;
-        conn.execute("INSERT INTO invoice_items (invoice_id, description, category, quantity, unit_price, total) VALUES (?1,?2,?3,?4,?5,?6)",
+        tx.execute("INSERT INTO invoice_items (invoice_id, description, category, quantity, unit_price, total) VALUES (?1,?2,?3,?4,?5,?6)",
             params![inv_id, item.description, item.category, item.quantity, item.unit_price, item_total]).map_err(|e| e.to_string())?;
     }
+
+    tx.commit().map_err(|e| e.to_string())?;
+
     audit::log(&state.pool, "System", "Invoice created", "billing", Some(inv_id), Some(&format!("{} total: ₹{}", code, total)));
     sync::queue_sync(&state.pool, "INSERT", "invoices", inv_id, &format!("{{\"total\":{}}}", total));
     get_invoice_by_id(state, inv_id)
@@ -835,13 +1006,18 @@ pub fn create_invoice(state: State<AppState>, data: CreateInvoice, items: Vec<Cr
 
 #[tauri::command]
 pub fn record_payment(state: State<AppState>, invoice_id: i64, amount: f64, method: Option<String>) -> Result<(), String> {
-    let conn = state.pool.get().map_err(|e| e.to_string())?;
-    let (total, paid): (f64, f64) = conn.query_row("SELECT total, paid_amount FROM invoices WHERE id=?1", params![invoice_id], |r| Ok((r.get(0)?, r.get(1)?))).map_err(|e| e.to_string())?;
+    let mut conn = state.pool.get().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    let (total, paid): (f64, f64) = tx.query_row("SELECT total, paid_amount FROM invoices WHERE id=?1", params![invoice_id], |r| Ok((r.get(0)?, r.get(1)?))).map_err(|e| e.to_string())?;
     let new_paid = paid + amount;
     let new_balance = total - new_paid;
     let new_status = if new_balance <= 0.0 { "Paid" } else { "Partial" };
-    conn.execute("UPDATE invoices SET paid_amount=?1, balance=?2, status=?3, payment_method=?4 WHERE id=?5",
+    tx.execute("UPDATE invoices SET paid_amount=?1, balance=?2, status=?3, payment_method=?4 WHERE id=?5",
         params![new_paid, new_balance.max(0.0), new_status, method, invoice_id]).map_err(|e| e.to_string())?;
+
+    tx.commit().map_err(|e| e.to_string())?;
+
     audit::log(&state.pool, "System", "Payment recorded", "billing", Some(invoice_id), Some(&format!("₹{} via {:?}", amount, method)));
     Ok(())
 }
@@ -938,6 +1114,39 @@ pub fn export_invoice_pdf(state: State<AppState>, invoice_id: i64) -> Result<Str
 }
 
 #[tauri::command]
+pub fn get_tax_report(state: State<AppState>, from: String, to: String, group_by: Option<String>) -> Result<Vec<TaxReport>, String> {
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+
+    let group_field = match group_by.as_deref() {
+        Some("month") => "strftime('%Y-%m', issue_date)",
+        Some("year") => "strftime('%Y', issue_date)",
+        _ => "issue_date",
+    };
+
+    let sql = format!(
+        "SELECT {}, SUM(subtotal), SUM(cgst), SUM(sgst), SUM(igst), SUM(tax), SUM(total)
+         FROM invoices
+         WHERE issue_date BETWEEN ?1 AND ?2
+         GROUP BY 1 ORDER BY 1",
+        group_field
+    );
+
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let report = stmt.query_map(params![from, to], |r| Ok(TaxReport {
+        period: r.get(0)?,
+        subtotal: r.get(1)?,
+        cgst: r.get(2)?,
+        sgst: r.get(3)?,
+        igst: r.get(4)?,
+        total_tax: r.get(5)?,
+        total_amount: r.get(6)?,
+    })).map_err(|e| e.to_string())?
+    .filter_map(|r| r.ok()).collect();
+
+    Ok(report)
+}
+
+#[tauri::command]
 pub fn get_revenue_by_range(state: State<AppState>, from: String, to: String) -> Result<Vec<RevenuePoint>, String> {
     let conn = state.pool.get().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
@@ -988,13 +1197,47 @@ pub fn create_insurance_claim(state: State<AppState>, data: CreateInsuranceClaim
 
 #[tauri::command]
 pub fn update_claim_status(state: State<AppState>, id: i64, status: String, approved_amount: Option<f64>) -> Result<(), String> {
-    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    let mut conn = state.pool.get().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
     let today = today();
     match status.as_str() {
-        "Submitted" => { conn.execute("UPDATE insurance_claims SET status='Submitted', submitted_date=?1 WHERE id=?2", params![today, id]).map_err(|e| e.to_string())?; }
-        "Approved" | "Rejected" | "Paid" => { conn.execute("UPDATE insurance_claims SET status=?1, approved_amount=?2, resolved_date=?3 WHERE id=?4", params![status, approved_amount, today, id]).map_err(|e| e.to_string())?; }
-        _ => { conn.execute("UPDATE insurance_claims SET status=?1 WHERE id=?2", params![status, id]).map_err(|e| e.to_string())?; }
+        "Submitted" => { tx.execute("UPDATE insurance_claims SET status='Submitted', submitted_date=?1 WHERE id=?2", params![today, id]).map_err(|e| e.to_string())?; }
+        "Approved" | "Rejected" | "Paid" => { tx.execute("UPDATE insurance_claims SET status=?1, approved_amount=?2, resolved_date=?3 WHERE id=?4", params![status, approved_amount, today, id]).map_err(|e| e.to_string())?; }
+        _ => { tx.execute("UPDATE insurance_claims SET status=?1 WHERE id=?2", params![status, id]).map_err(|e| e.to_string())?; }
     }
+
+    // If claim is approved or paid, we should probably update the invoice balance or status
+    if status == "Approved" || status == "Paid" {
+        if let Some(approved) = approved_amount {
+            let invoice_id: i64 = tx.query_row(
+                "SELECT invoice_id FROM insurance_claims WHERE id = ?1",
+                params![id],
+                |r| r.get(0)
+            ).map_err(|e| e.to_string())?;
+
+            // Record the approved insurance amount as a payment on the invoice
+            let (total, current_paid): (f64, f64) = tx.query_row(
+                "SELECT total, paid_amount FROM invoices WHERE id = ?1",
+                params![invoice_id],
+                |r| Ok((r.get(0)?, r.get(1)?))
+            ).map_err(|e| e.to_string())?;
+
+            let new_paid = current_paid + approved;
+            let new_balance = (total - new_paid).max(0.0);
+            let new_status = if new_balance <= 0.0 { "Paid" } else { "Partial" };
+
+            tx.execute(
+                "UPDATE invoices SET paid_amount = ?1, balance = ?2, status = ?3, insurance_claim_id = ?4 WHERE id = ?5",
+                params![new_paid, new_balance, new_status, id, invoice_id]
+            ).map_err(|e| e.to_string())?;
+
+            audit::log(&state.pool, "System", "Invoice updated via Insurance", "billing", Some(invoice_id), Some(&format!("Amount: ₹{}", approved)));
+        }
+    }
+
+    tx.commit().map_err(|e| e.to_string())?;
+
     audit::log(&state.pool, "System", "Claim status updated", "insurance", Some(id), Some(&status));
     Ok(())
 }
@@ -1039,7 +1282,7 @@ pub fn update_stock(state: State<AppState>, item_id: i64, quantity: i64, operati
         "subtract" => conn.execute("UPDATE inventory SET current_stock = MAX(0, current_stock - ?1) WHERE id = ?2", params![quantity, item_id]).map_err(|e| e.to_string())?,
         _ => return Err("Invalid operation".to_string()),
     };
-    audit::log(&state.pool, "System", &format!("Stock {}", operation), "inventory", Some(item_id), Some(&format!("qty: {}", quantity)));
+    audit::log(&state.pool, "System", &format!("Stock {}", operation), "inventory", Some(item_id), Some(&format!("qty: {}, id:{}", quantity, item_id)));
     Ok(())
 }
 
@@ -1061,9 +1304,50 @@ pub fn create_inventory_item(state: State<AppState>, data: CreateInventoryItem) 
 }
 
 #[tauri::command]
-pub fn delete_inventory_item(state: State<AppState>, id: i64) -> Result<(), String> {
+pub fn update_inventory_item(state: State<AppState>, id: i64, data: serde_json::Value) -> Result<InventoryItem, String> {
+    let mut conn = state.pool.get().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    let fields = [
+        "name", "category", "current_stock", "min_threshold", "max_capacity",
+        "unit", "unit_price", "supplier", "expiry_date", "location"
+    ];
+
+    for field in fields {
+        if let Some(value) = data.get(field) {
+            let sql = format!("UPDATE inventory SET {} = ?1 WHERE id = ?2", field);
+            if value.is_null() {
+                tx.execute(&sql, params![rusqlite::types::Null, id]).map_err(|e| e.to_string())?;
+            } else if let Some(s) = value.as_str() {
+                tx.execute(&sql, params![s, id]).map_err(|e| e.to_string())?;
+            } else if let Some(i) = value.as_i64() {
+                tx.execute(&sql, params![i, id]).map_err(|e| e.to_string())?;
+            } else if let Some(f) = value.as_f64() {
+                tx.execute(&sql, params![f, id]).map_err(|e| e.to_string())?;
+            } else if let Some(b) = value.as_bool() {
+                tx.execute(&sql, params![if b { 1 } else { 0 }, id]).map_err(|e| e.to_string())?;
+            }
+        }
+    }
+
+    tx.commit().map_err(|e| e.to_string())?;
+
+    audit::log(&state.pool, "System", "Inventory item updated", "inventory", Some(id), None);
+
+    conn.query_row("SELECT id, item_code, name, category, current_stock, min_threshold, max_capacity, unit, unit_price, supplier, expiry_date, location, last_restocked FROM inventory WHERE id = ?1", params![id], |r| Ok(InventoryItem {
+        id: r.get(0)?, item_code: r.get(1)?, name: r.get(2)?, category: r.get(3)?,
+        current_stock: r.get(4)?, min_threshold: r.get(5)?, max_capacity: r.get(6)?,
+        unit: r.get(7)?, unit_price: r.get(8)?, supplier: r.get(9)?,
+        expiry_date: r.get(10)?, location: r.get(11)?, last_restocked: r.get(12)?,
+    })).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_inventory_item(state: State<AppState>, id: i64, requester: Option<String>) -> Result<(), String> {
+    check_permission(&state, requester.clone(), "Pharmacy", "delete")?;
     let conn = state.pool.get().map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM inventory WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
+    audit::log(&state.pool, &requester.unwrap_or_else(|| "System".to_string()), "Inventory item deleted", "inventory", Some(id), None);
     Ok(())
 }
 
@@ -1115,13 +1399,15 @@ pub fn get_setting(state: State<AppState>, key: String) -> Result<Option<String>
 }
 
 #[tauri::command]
-pub fn set_setting(state: State<AppState>, key: String, value: String) -> Result<(), String> {
+pub fn set_setting(state: State<AppState>, key: String, value: String, requester: Option<String>) -> Result<(), String> {
+    check_permission(&state, requester.clone(), "Settings", "edit")?;
     let conn = state.pool.get().map_err(|e| e.to_string())?;
     conn.execute(
         "INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, datetime('now'))
          ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')",
         params![key, value],
     ).map_err(|e| e.to_string())?;
+    audit::log(&state.pool, &requester.unwrap_or_else(|| "System".to_string()), "Setting updated", "settings", None, Some(&key));
     Ok(())
 }
 
@@ -1157,7 +1443,8 @@ pub fn backup_database(state: State<AppState>) -> Result<String, String> {
 // ─── USERS & AUTH ──────────────────────────────────────────────────────────────
 
 #[tauri::command]
-pub fn create_user(state: State<AppState>, data: CreateUser) -> Result<User, String> {
+pub fn create_user(state: State<AppState>, data: CreateUser, requester: Option<String>) -> Result<User, String> {
+    check_permission(&state, requester.clone(), "Settings", "create")?;
     let conn = state.pool.get().map_err(|e| e.to_string())?;
     let password_hash = bcrypt::hash(&data.password, 10).map_err(|e| e.to_string())?;
     conn.execute(
@@ -1165,7 +1452,7 @@ pub fn create_user(state: State<AppState>, data: CreateUser) -> Result<User, Str
         params![data.username, password_hash, data.role, data.full_name, data.department],
     ).map_err(|e| e.to_string())?;
     let id = conn.last_insert_rowid();
-    audit::log(&state.pool, "System", "User created", "user", Some(id), Some(&data.username));
+    audit::log(&state.pool, &requester.unwrap_or_else(|| "System".to_string()), "User created", "user", Some(id), Some(&data.username));
     conn.query_row(
         "SELECT id, username, role, full_name, department, is_active, last_login, created_at FROM users WHERE id = ?1",
         params![id],
@@ -1233,10 +1520,11 @@ pub fn update_user_status(state: State<AppState>, id: i64, is_active: bool) -> R
 }
 
 #[tauri::command]
-pub fn delete_user(state: State<AppState>, id: i64) -> Result<(), String> {
+pub fn delete_user(state: State<AppState>, id: i64, requester: Option<String>) -> Result<(), String> {
+    check_permission(&state, requester.clone(), "Settings", "delete")?;
     let conn = state.pool.get().map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM users WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
-    audit::log(&state.pool, "System", "User deleted", "user", Some(id), None);
+    audit::log(&state.pool, &requester.unwrap_or_else(|| "System".to_string()), "User deleted", "user", Some(id), None);
     Ok(())
 }
 
@@ -1314,19 +1602,28 @@ pub fn create_payment_batch(state: State<AppState>, data: CreatePaymentBatch) ->
 
 #[tauri::command]
 pub fn add_payment_batch_item(state: State<AppState>, batch_id: i64, invoice_id: i64, amount: f64, payment_method: String, reference_no: Option<String>) -> Result<PaymentBatchItem, String> {
-    let conn = state.pool.get().map_err(|e| e.to_string())?;
-    conn.execute(
+    let mut conn = state.pool.get().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    tx.execute(
         "INSERT INTO payment_batch_items (batch_id, invoice_id, amount, payment_method, reference_no) VALUES (?1,?2,?3,?4,?5)",
         params![batch_id, invoice_id, amount, payment_method, reference_no],
     ).map_err(|e| e.to_string())?;
-    let inv_code: String = conn.query_row("SELECT invoice_code FROM invoices WHERE id = ?1", params![invoice_id], |r| r.get(0)).map_err(|e| e.to_string())?;
-    conn.execute("UPDATE payment_batches SET total_amount = total_amount + ?1, total_count = total_count + 1 WHERE id = ?2", params![amount, batch_id]).map_err(|e| e.to_string())?;
-    let id = conn.last_insert_rowid();
-    conn.query_row(
+
+    let inv_code: String = tx.query_row("SELECT invoice_code FROM invoices WHERE id = ?1", params![invoice_id], |r| r.get(0)).map_err(|e| e.to_string())?;
+
+    tx.execute("UPDATE payment_batches SET total_amount = total_amount + ?1, total_count = total_count + 1 WHERE id = ?2", params![amount, batch_id]).map_err(|e| e.to_string())?;
+
+    let id = tx.last_insert_rowid();
+    let item = tx.query_row(
         "SELECT id, batch_id, invoice_id, amount, payment_method, reference_no, created_at FROM payment_batch_items WHERE id = ?1",
         params![id],
         |r| Ok(PaymentBatchItem { id: r.get(0)?, batch_id: r.get(1)?, invoice_id: r.get(2)?, invoice_code: Some(inv_code), amount: r.get(3)?, payment_method: r.get(4)?, reference_no: r.get(5)?, created_at: r.get(6)? }),
-    ).map_err(|e| e.to_string())
+    ).map_err(|e| e.to_string())?;
+
+    tx.commit().map_err(|e| e.to_string())?;
+
+    Ok(item)
 }
 
 // ─────────────────────────────────────────
@@ -1498,28 +1795,50 @@ pub fn get_attendance(state: State<AppState>, date: Option<String>) -> Result<Ve
 
 #[tauri::command]
 pub fn mark_attendance(state: State<AppState>, data: MarkAttendance) -> Result<Attendance, String> {
-    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    let mut conn = state.pool.get().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
     let work_hours = match (&data.check_in, &data.check_out) {
         (Some(in_time), Some(out_time)) => {
             let calc_hours = |t: &str| -> f64 {
                 let parts: Vec<&str> = t.split(':').collect();
                 if parts.len() >= 2 { parts[0].parse::<f64>().unwrap_or(0.0) + parts[1].parse::<f64>().unwrap_or(0.0) / 60.0 } else { 0.0 }
             };
-            calc_hours(out_time) - calc_hours(in_time)
+            (calc_hours(out_time) - calc_hours(in_time)).max(0.0)
         },
         _ => 0.0,
     };
-    conn.execute(
-        "INSERT INTO attendance (employee_id, attendance_date, check_in, check_out, work_hours, status) VALUES (?1,?2,?3,?4,?5,?6)",
+
+    tx.execute(
+        "INSERT INTO attendance (employee_id, attendance_date, check_in, check_out, work_hours, status)
+         VALUES (?1,?2,?3,?4,?5,?6)
+         ON CONFLICT(employee_id, attendance_date) DO UPDATE SET
+            check_in = COALESCE(excluded.check_in, attendance.check_in),
+            check_out = COALESCE(excluded.check_out, attendance.check_out),
+            work_hours = excluded.work_hours,
+            status = excluded.status",
         params![data.employee_id, data.attendance_date, data.check_in, data.check_out, work_hours, data.status],
     ).map_err(|e| e.to_string())?;
-    let id = conn.last_insert_rowid();
-    let name: String = conn.query_row("SELECT first_name || ' ' || last_name FROM employees WHERE id = ?1", params![data.employee_id], |r| r.get(0)).map_err(|e| e.to_string())?;
-    conn.query_row(
+
+    let id: i64 = if let Some(last_id) = tx.last_insert_rowid().into() {
+        if last_id == 0 { // Row was updated, not inserted
+            tx.query_row("SELECT id FROM attendance WHERE employee_id = ?1 AND attendance_date = ?2",
+                params![data.employee_id, data.attendance_date], |r| r.get(0)).unwrap_or(0)
+        } else {
+            last_id
+        }
+    } else { 0 };
+
+    let name: String = tx.query_row("SELECT first_name || ' ' || last_name FROM employees WHERE id = ?1", params![data.employee_id], |r| r.get(0)).map_err(|e| e.to_string())?;
+
+    let attendance = tx.query_row(
         "SELECT id, employee_id, attendance_date, check_in, check_out, work_hours, status, created_at FROM attendance WHERE id = ?1",
         params![id],
         |r| Ok(Attendance { id: r.get(0)?, employee_id: r.get(1)?, employee_name: Some(name), attendance_date: r.get(2)?, check_in: r.get(3)?, check_out: r.get(4)?, work_hours: r.get(5)?, status: r.get(6)?, created_at: r.get(7)? }),
-    ).map_err(|e| e.to_string())
+    ).map_err(|e| e.to_string())?;
+
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(attendance)
 }
 
 // ─────────────────────────────────────────
@@ -1627,26 +1946,34 @@ pub fn get_opd_tokens(state: State<AppState>, date: Option<String>, status: Opti
 
 #[tauri::command]
 pub fn create_opd_token(state: State<AppState>, data: CreateOpdToken) -> Result<OpdToken, String> {
-    let conn = state.pool.get().map_err(|e| e.to_string())?;
-    let max_token: i64 = conn.query_row("SELECT COALESCE(MAX(token_number), 0) FROM opd_tokens WHERE queue_date = ?1 AND doctor_id = ?2", params![data.queue_date, data.doctor_id], |r| r.get(0)).map_err(|e| e.to_string())?;
+    let mut conn = state.pool.get().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    let max_token: i64 = tx.query_row("SELECT COALESCE(MAX(token_number), 0) FROM opd_tokens WHERE queue_date = ?1 AND doctor_id = ?2", params![data.queue_date, data.doctor_id], |r| r.get(0)).map_err(|e| e.to_string())?;
     let token_number = max_token + 1;
-    conn.execute(
+    tx.execute(
         "INSERT INTO opd_tokens (token_number, patient_id, doctor_id, department, queue_date) VALUES (?1,?2,?3,?4,?5)",
         params![token_number, data.patient_id, data.doctor_id, data.department, data.queue_date],
     ).map_err(|e| e.to_string())?;
-    let id = conn.last_insert_rowid();
-    let (pat_name, doc_name): (String, String) = conn.query_row(
+    let id = tx.last_insert_rowid();
+
+    let (pat_name, doc_name): (String, String) = tx.query_row(
         "SELECT p.full_name, d.full_name FROM patients p JOIN doctors d ON d.id = ?1 WHERE p.id = ?2",
         params![data.doctor_id, data.patient_id],
         |r| Ok((r.get(0)?, r.get(1)?))
     ).map_err(|e| e.to_string())?;
+
+    tx.commit().map_err(|e| e.to_string())?;
+
     conn.query_row("SELECT id, token_number, patient_id, doctor_id, department, queue_date, status, wait_time, created_at FROM opd_tokens WHERE id = ?1", params![id],
         |r| Ok(OpdToken { id: r.get(0)?, token_number: r.get(1)?, patient_id: r.get(2)?, patient_name: Some(pat_name), doctor_id: r.get(3)?, doctor_name: Some(doc_name), department: r.get(4)?, queue_date: r.get(5)?, status: r.get(6)?, wait_time: r.get(7)?, called_at: None, started_at: None, completed_at: None, created_at: r.get(8)? })).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn update_token_status(state: State<AppState>, id: i64, new_status: String) -> Result<OpdToken, String> {
-    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    let mut conn = state.pool.get().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
     let now = now();
     let col = match new_status.as_str() {
         "Called" => "called_at",
@@ -1654,11 +1981,29 @@ pub fn update_token_status(state: State<AppState>, id: i64, new_status: String) 
         "Completed" => "completed_at",
         _ => "",
     };
+
     if !col.is_empty() {
-        conn.execute(&format!("UPDATE opd_tokens SET status = ?1, {} = ?2 WHERE id = ?3", col), params![new_status, now, id]).map_err(|e| e.to_string())?;
+        tx.execute(&format!("UPDATE opd_tokens SET status = ?1, {} = ?2 WHERE id = ?3", col), params![new_status, now, id]).map_err(|e| e.to_string())?;
     } else {
-        conn.execute("UPDATE opd_tokens SET status = ?1 WHERE id = ?2", params![new_status, id]).map_err(|e| e.to_string())?;
+        tx.execute("UPDATE opd_tokens SET status = ?1 WHERE id = ?2", params![new_status, id]).map_err(|e| e.to_string())?;
     }
+
+    // If token is completed, also complete the corresponding appointment for today
+    if new_status == "Completed" {
+        let (patient_id, doctor_id, queue_date): (i64, i64, String) = tx.query_row(
+            "SELECT patient_id, doctor_id, queue_date FROM opd_tokens WHERE id = ?1",
+            params![id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+        ).map_err(|e| e.to_string())?;
+
+        tx.execute(
+            "UPDATE appointments SET status = 'Completed' WHERE patient_id = ?1 AND doctor_id = ?2 AND appointment_date = ?3 AND status IN ('Scheduled', 'Checked In', 'In Progress')",
+            params![patient_id, doctor_id, queue_date]
+        ).map_err(|e| e.to_string())?;
+    }
+
+    tx.commit().map_err(|e| e.to_string())?;
+
     let token: OpdToken = conn.query_row(
         "SELECT t.id, t.token_number, t.patient_id, p.full_name, t.doctor_id, d.full_name, t.department, t.queue_date, t.status, t.wait_time, t.called_at, t.started_at, t.completed_at, t.created_at FROM opd_tokens t JOIN patients p ON t.patient_id = p.id JOIN doctors d ON t.doctor_id = d.id WHERE t.id = ?1",
         params![id],
@@ -1698,24 +2043,49 @@ pub fn get_discharge_summaries(state: State<AppState>, patient_id: Option<i64>) 
 
 #[tauri::command]
 pub fn create_discharge_summary(state: State<AppState>, data: CreateDischargeSummary, medications: Vec<CreateDischargeMedication>) -> Result<DischargeSummary, String> {
-    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    let mut conn = state.pool.get().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
     let code = new_code("DS");
-    conn.execute(
+    tx.execute(
         "INSERT INTO discharge_summaries (summary_code, patient_id, admission_date, discharge_date, discharge_type, diagnosis, procedure_done, history_present_illness, examination_findings, investigations, treatment_given, advice_on_discharge, follow_up_date, created_by) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14)",
         params![code, data.patient_id, data.admission_date, data.discharge_date, data.discharge_type.unwrap_or_else(|| "Regular".to_string()), data.diagnosis, data.procedure_done, data.history_present_illness, data.examination_findings, data.investigations, data.treatment_given, data.advice_on_discharge, data.follow_up_date, data.created_by],
     ).map_err(|e| e.to_string())?;
-    let id = conn.last_insert_rowid();
+    let id = tx.last_insert_rowid();
     for med in &medications {
-        conn.execute("INSERT INTO discharge_medications (discharge_summary_id, medication, dosage, duration, instructions) VALUES (?1,?2,?3,?4,?5)", params![id, med.medication, med.dosage, med.duration, med.instructions]).map_err(|e| e.to_string())?;
+        tx.execute("INSERT INTO discharge_medications (discharge_summary_id, medication, dosage, duration, instructions) VALUES (?1,?2,?3,?4,?5)", params![id, med.medication, med.dosage, med.duration, med.instructions]).map_err(|e| e.to_string())?;
     }
+
+    tx.commit().map_err(|e| e.to_string())?;
+
     audit::log(&state.pool, "System", "Discharge summary created", "discharge_summary", Some(id), Some(&code));
-    let (pat_name, doc_name): (String, String) = conn.query_row("SELECT p.full_name, d.full_name FROM patients p JOIN doctors d ON d.id = ?1 WHERE p.id = ?2", params![data.created_by, data.patient_id], |r| Ok((r.get(0)?, r.get(1)?))).map_err(|e| e.to_string())?;
-    let mut meds = vec![];
+    get_discharge_summary_by_id(state, id)
+}
+
+fn get_discharge_summary_by_id(state: State<AppState>, id: i64) -> Result<DischargeSummary, String> {
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    let (pat_name, doc_name): (String, String) = conn.query_row(
+        "SELECT p.full_name, d.full_name FROM discharge_summaries ds
+         JOIN patients p ON ds.patient_id = p.id
+         JOIN doctors d ON ds.created_by = d.id
+         WHERE ds.id = ?1",
+        params![id],
+        |r| Ok((r.get(0)?, r.get(1)?))
+    ).map_err(|e| e.to_string())?;
+
     let mut med_stmt = conn.prepare("SELECT id, discharge_summary_id, medication, dosage, duration, instructions FROM discharge_medications WHERE discharge_summary_id = ?1").map_err(|e| e.to_string())?;
-    let meds_result: Vec<DischargeMedication> = med_stmt.query_map(params![id], |r| Ok(DischargeMedication { id: r.get(0)?, discharge_summary_id: r.get(1)?, medication: r.get(2)?, dosage: r.get(3)?, duration: r.get(4)?, instructions: r.get(5)? })).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
-    meds = meds_result;
+    let meds: Vec<DischargeMedication> = med_stmt.query_map(params![id], |r| Ok(DischargeMedication { id: r.get(0)?, discharge_summary_id: r.get(1)?, medication: r.get(2)?, dosage: r.get(3)?, duration: r.get(4)?, instructions: r.get(5)? })).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
+
     conn.query_row("SELECT id, summary_code, patient_id, admission_date, discharge_date, discharge_type, diagnosis, procedure_done, history_present_illness, examination_findings, investigations, treatment_given, advice_on_discharge, follow_up_date, created_by, created_at FROM discharge_summaries WHERE id = ?1", params![id],
-        |r| Ok(DischargeSummary { id: r.get(0)?, summary_code: r.get(1)?, patient_id: r.get(2)?, patient_name: Some(pat_name), admission_date: r.get(3)?, discharge_date: r.get(4)?, discharge_type: r.get(5)?, diagnosis: r.get(6)?, procedure_done: r.get(7)?, history_present_illness: r.get(8)?, examination_findings: r.get(9)?, investigations: r.get(10)?, treatment_given: r.get(11)?, advice_on_discharge: r.get(12)?, follow_up_date: r.get(13)?, created_by: r.get(14)?, doctor_name: Some(doc_name), medications: meds, created_at: r.get(15)? })).map_err(|e| e.to_string())
+        |r| Ok(DischargeSummary {
+            id: r.get(0)?, summary_code: r.get(1)?, patient_id: r.get(2)?, patient_name: Some(pat_name),
+            admission_date: r.get(3)?, discharge_date: r.get(4)?, discharge_type: r.get(5)?, diagnosis: r.get(6)?,
+            procedure_done: r.get(7)?, history_present_illness: r.get(8)?, examination_findings: r.get(9)?,
+            investigations: r.get(10)?, treatment_given: r.get(11)?, advice_on_discharge: r.get(12)?,
+            follow_up_date: r.get(13)?, created_by: r.get(14)?, doctor_name: Some(doc_name), medications: meds,
+            created_at: r.get(15)?
+        })
+    ).map_err(|e| e.to_string())
 }
 
 // ─────────────────────────────────────────
@@ -1786,9 +2156,27 @@ pub fn create_emergency_case(state: State<AppState>, data: CreateEmergencyCase) 
 
 #[tauri::command]
 pub fn update_emergency_status(state: State<AppState>, id: i64, status: String, outcome: Option<String>, admitted_to: Option<i64>) -> Result<(), String> {
-    let conn = state.pool.get().map_err(|e| e.to_string())?;
-    conn.execute("UPDATE emergency_cases SET status = ?1, outcome = ?2, admitted_to = ?3, discharged_at = ?4 WHERE id = ?5",
+    let mut conn = state.pool.get().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    tx.execute("UPDATE emergency_cases SET status = ?1, outcome = ?2, admitted_to = ?3, discharged_at = ?4 WHERE id = ?5",
         params![status, outcome, admitted_to, if status == "Discharged" || status == "Admitted" { Some(now()) } else { None }, id]).map_err(|e| e.to_string())?;
+
+    // If admitted, update patient status
+    if status == "Admitted" {
+        let patient_id: Option<i64> = tx.query_row(
+            "SELECT patient_id FROM emergency_cases WHERE id = ?1",
+            params![id],
+            |r| r.get(0)
+        ).ok().flatten();
+
+        if let Some(pid) = patient_id {
+            tx.execute("UPDATE patients SET status = 'Admitted' WHERE id = ?1", params![pid]).map_err(|e| e.to_string())?;
+        }
+    }
+
+    tx.commit().map_err(|e| e.to_string())?;
+
     audit::log(&state.pool, "System", "Emergency case updated", "emergency_case", Some(id), Some(&status));
     Ok(())
 }
@@ -1825,11 +2213,25 @@ pub fn get_blood_inventory(state: State<AppState>) -> Result<Vec<BloodInventory>
 
 #[tauri::command]
 pub fn create_blood_inventory(state: State<AppState>, data: CreateBloodInventory) -> Result<BloodInventory, String> {
-    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    let mut conn = state.pool.get().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
     let code = new_code("BB");
-    conn.execute("INSERT INTO blood_inventory (bag_number, blood_group, component, units, collection_date, expiry_date, donor_id) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+    tx.execute("INSERT INTO blood_inventory (bag_number, blood_group, component, units, collection_date, expiry_date, donor_id) VALUES (?1,?2,?3,?4,?5,?6,?7)",
         params![code, data.blood_group, data.component.unwrap_or_else(|| "Whole Blood".to_string()), data.units, data.collection_date, data.expiry_date, data.donor_id]).map_err(|e| e.to_string())?;
-    let id = conn.last_insert_rowid();
+    let id = tx.last_insert_rowid();
+
+    if let Some(donor_id) = data.donor_id {
+        tx.execute(
+            "UPDATE blood_donors SET last_donation = ?1, donation_count = donation_count + 1 WHERE id = ?2",
+            params![data.collection_date, donor_id]
+        ).map_err(|e| e.to_string())?;
+    }
+
+    tx.commit().map_err(|e| e.to_string())?;
+
+    audit::log(&state.pool, "System", "Blood inventory added", "blood_bank", Some(id), Some(&format!("Bag: {}, Group: {}", code, data.blood_group)));
+
     conn.query_row("SELECT id, bag_number, blood_group, component, units, collection_date, expiry_date, donor_id, status, created_at FROM blood_inventory WHERE id = ?1", params![id],
         |r| Ok(BloodInventory { id: r.get(0)?, bag_number: r.get(1)?, blood_group: r.get(2)?, component: r.get(3)?, units: r.get(4)?, collection_date: r.get(5)?, expiry_date: r.get(6)?, donor_id: r.get(7)?, status: r.get(8)?, created_at: r.get(9)? })).map_err(|e| e.to_string())
 }
@@ -1884,12 +2286,21 @@ pub fn get_ambulance_calls(state: State<AppState>, status: Option<String>) -> Re
 
 #[tauri::command]
 pub fn create_ambulance_call(state: State<AppState>, data: CreateAmbulanceCall) -> Result<AmbulanceCall, String> {
-    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    let mut conn = state.pool.get().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
     let code = new_code("AMB");
     let call_time = now();
-    conn.execute("INSERT INTO ambulance_calls (call_code, patient_id, patient_name, patient_phone, pickup_address, destination, ambulance_id, driver_name, call_time, notes) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
+    tx.execute("INSERT INTO ambulance_calls (call_code, patient_id, patient_name, patient_phone, pickup_address, destination, ambulance_id, driver_name, call_time, notes) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
         params![code, data.patient_id, data.patient_name, data.patient_phone, data.pickup_address, data.destination, data.ambulance_id, data.driver_name, call_time, data.notes]).map_err(|e| e.to_string())?;
-    let id = conn.last_insert_rowid();
+    let id = tx.last_insert_rowid();
+
+    if let Some(ambulance_id) = data.ambulance_id {
+        tx.execute("UPDATE ambulances SET status = 'On Call' WHERE id = ?1", params![ambulance_id]).map_err(|e| e.to_string())?;
+    }
+
+    tx.commit().map_err(|e| e.to_string())?;
+
     audit::log(&state.pool, "System", "Ambulance called", "ambulance_call", Some(id), Some(&code));
     conn.query_row("SELECT a.id, a.call_code, a.patient_id, a.patient_name, a.patient_phone, a.pickup_address, a.destination, a.ambulance_id, b.ambulance_number, a.driver_name, a.call_time, a.pickup_time, a.arrival_time, a.drop_time, a.status, a.notes, a.created_at FROM ambulance_calls a LEFT JOIN ambulances b ON a.ambulance_id = b.id WHERE a.id = ?1", params![id],
         |r| Ok(AmbulanceCall { id: r.get(0)?, call_code: r.get(1)?, patient_id: r.get(2)?, patient_name: r.get(3)?, patient_phone: r.get(4)?, pickup_address: r.get(5)?, destination: r.get(6)?, ambulance_id: r.get(7)?, ambulance_number: r.get(8)?, driver_name: r.get(9)?, call_time: r.get(10)?, pickup_time: r.get(11)?, arrival_time: r.get(12)?, drop_time: r.get(13)?, status: r.get(14)?, notes: r.get(15)?, created_at: r.get(16)? })).map_err(|e| e.to_string())
@@ -1897,14 +2308,32 @@ pub fn create_ambulance_call(state: State<AppState>, data: CreateAmbulanceCall) 
 
 #[tauri::command]
 pub fn update_ambulance_status(state: State<AppState>, id: i64, status: String) -> Result<(), String> {
-    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    let mut conn = state.pool.get().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
     let now_time = now();
     let col = match status.as_str() { "PickedUp" => "pickup_time", "Arrived" => "arrival_time", "Completed" => "drop_time", _ => "" };
     if !col.is_empty() {
-        conn.execute(&format!("UPDATE ambulance_calls SET status = ?1, {} = ?2 WHERE id = ?3", col), params![status, now_time, id]).map_err(|e| e.to_string())?;
+        tx.execute(&format!("UPDATE ambulance_calls SET status = ?1, {} = ?2 WHERE id = ?3", col), params![status, now_time, id]).map_err(|e| e.to_string())?;
     } else {
-        conn.execute("UPDATE ambulance_calls SET status = ?1 WHERE id = ?2", params![status, id]).map_err(|e| e.to_string())?;
+        tx.execute("UPDATE ambulance_calls SET status = ?1 WHERE id = ?2", params![status, id]).map_err(|e| e.to_string())?;
     }
+
+    if status == "Completed" {
+        let ambulance_id: Option<i64> = tx.query_row(
+            "SELECT ambulance_id FROM ambulance_calls WHERE id = ?1",
+            params![id],
+            |r| r.get(0)
+        ).ok().flatten();
+
+        if let Some(amb_id) = ambulance_id {
+            tx.execute("UPDATE ambulances SET status = 'Available' WHERE id = ?1", params![amb_id]).map_err(|e| e.to_string())?;
+        }
+    }
+
+    tx.commit().map_err(|e| e.to_string())?;
+
+    audit::log(&state.pool, "System", "Ambulance status updated", "ambulance", Some(id), Some(&status));
     Ok(())
 }
 
@@ -1924,6 +2353,7 @@ pub fn create_expense_category(state: State<AppState>, data: CreateExpenseCatego
     let conn = state.pool.get().map_err(|e| e.to_string())?;
     conn.execute("INSERT INTO expense_categories (category_name, description) VALUES (?1,?2)", params![data.category_name, data.description]).map_err(|e| e.to_string())?;
     let id = conn.last_insert_rowid();
+    audit::log(&state.pool, "System", "Expense category added", "expense", Some(id), Some(&data.category_name));
     conn.query_row("SELECT id, category_name, description, created_at FROM expense_categories WHERE id = ?1", params![id],
         |r| Ok(ExpenseCategory { id: r.get(0)?, category_name: r.get(1)?, description: r.get(2)?, created_at: r.get(3)? })).map_err(|e| e.to_string())
 }
@@ -1940,8 +2370,10 @@ pub fn get_expenses(state: State<AppState>, status: Option<String>) -> Result<Ve
 pub fn create_expense(state: State<AppState>, data: CreateExpense) -> Result<Expense, String> {
     let conn = state.pool.get().map_err(|e| e.to_string())?;
     let code = new_code("EXP");
-    conn.execute("INSERT INTO expenses (expense_code, category_id, amount, expense_date, description, vendor, payment_method, receipt_number) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
-        params![code, data.category_id, data.amount, data.expense_date, data.description, data.vendor, data.payment_method, data.receipt_number]).map_err(|e| e.to_string())?;
+    // Auto-approve small expenses under 1000
+    let status = if data.amount < 1000.0 { "Approved" } else { "Pending" };
+    conn.execute("INSERT INTO expenses (expense_code, category_id, amount, expense_date, description, vendor, payment_method, receipt_number, status) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+        params![code, data.category_id, data.amount, data.expense_date, data.description, data.vendor, data.payment_method, data.receipt_number, status]).map_err(|e| e.to_string())?;
     let id = conn.last_insert_rowid();
     audit::log(&state.pool, "System", "Expense recorded", "expense", Some(id), Some(&format!("₹{}", data.amount)));
     conn.query_row("SELECT e.id, e.expense_code, e.category_id, c.category_name, e.amount, e.expense_date, e.description, e.vendor, e.payment_method, e.receipt_number, e.approved_by, e.status, e.created_at FROM expenses e JOIN expense_categories c ON e.category_id = c.id WHERE e.id = ?1", params![id],
@@ -1989,10 +2421,12 @@ pub fn get_role_permissions(state: State<AppState>, role: Option<String>) -> Res
 }
 
 #[tauri::command]
-pub fn update_role_permission(state: State<AppState>, data: UpdateRolePermission) -> Result<RolePermission, String> {
+pub fn update_role_permission(state: State<AppState>, data: UpdateRolePermission, requester: Option<String>) -> Result<RolePermission, String> {
+    check_permission(&state, requester.clone(), "Settings", "edit")?;
     let conn = state.pool.get().map_err(|e| e.to_string())?;
     conn.execute("INSERT OR REPLACE INTO role_permissions (role, module, can_view, can_create, can_edit, can_delete) VALUES (?1,?2,?3,?4,?5,?6)",
         params![data.role, data.module, if data.can_view {1}else{0}, if data.can_create {1}else{0}, if data.can_edit {1}else{0}, if data.can_delete {1}else{0}]).map_err(|e| e.to_string())?;
+    audit::log(&state.pool, &requester.unwrap_or_else(|| "System".to_string()), "Role permission updated", "settings", None, Some(&format!("{}:{}", data.role, data.module)));
     conn.query_row("SELECT id, role, module, can_view, can_create, can_edit, can_delete FROM role_permissions WHERE role = ?1 AND module = ?2", params![data.role, data.module],
         |r| Ok(RolePermission { id: r.get(0)?, role: r.get(1)?, module: r.get(2)?, can_view: r.get::<_, i64>(3)? == 1, can_create: r.get::<_, i64>(4)? == 1, can_edit: r.get::<_, i64>(5)? == 1, can_delete: r.get::<_, i64>(6)? == 1 })).map_err(|e| e.to_string())
 }

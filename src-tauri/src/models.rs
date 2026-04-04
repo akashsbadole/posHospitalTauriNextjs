@@ -437,6 +437,17 @@ pub struct RevenuePoint {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct TaxReport {
+    pub period: String,
+    pub subtotal: f64,
+    pub cgst: f64,
+    pub sgst: f64,
+    pub igst: f64,
+    pub total_tax: f64,
+    pub total_amount: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SyncStatus {
     pub last_sync: String,
     pub pending: i64,

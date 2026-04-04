@@ -14,8 +14,8 @@ export default function OpdQueuePage() {
   const { data: doctors = [] } = useQuery({ queryKey: ["doctors"], queryFn: getDoctors });
   const { data: patients = [] } = useQuery({ queryKey: ["patients"], queryFn: () => getPatients() });
 
-  const createTokenMut = useMutation({ mutationFn: createOpdToken, onSuccess: () => { qc.invalidateQueries({ queryKey: ["opd-tokens"] }); toast.success("Token generated!"); setShowAddToken(false); }, onError: () => toast.error("Failed") });
-  const updateStatusMut = useMutation({ mutationFn: ({ id, status }: { id: number; status: string }) => updateTokenStatus(id, status), onSuccess: () => { qc.invalidateQueries({ queryKey: ["opd-tokens"] }); toast.success("Status updated!"); }, onError: () => toast.error("Failed") });
+  const createTokenMut = useMutation({ mutationFn: createOpdToken, onSuccess: () => { qc.invalidateQueries({ queryKey: ["opd-tokens"] }); toast.success("Token generated!"); setShowAddToken(false); }, onError: (err: Error) => toast.error(err.message || "Failed to generate token") });
+  const updateStatusMut = useMutation({ mutationFn: ({ id, status }: { id: number; status: string }) => updateTokenStatus(id, status), onSuccess: () => { qc.invalidateQueries({ queryKey: ["opd-tokens"] }); toast.success("Status updated!"); }, onError: (err: Error) => toast.error(err.message || "Failed to update status") });
 
   const waiting = tokens.filter(t => t.status === "Waiting").length;
   const called = tokens.filter(t => t.status === "Called").length;

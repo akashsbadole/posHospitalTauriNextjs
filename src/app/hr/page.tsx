@@ -31,25 +31,25 @@ export default function HrPage() {
   const createEmpMut = useMutation({
     mutationFn: createEmployee,
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["employees"] }); toast.success("Employee added!"); setShowAddEmployee(false); },
-    onError: () => toast.error("Failed to add employee"),
+    onError: (err: Error) => toast.error(err.message || "Failed to add employee"),
   });
 
   const createLeaveMut = useMutation({
     mutationFn: createLeaveRequest,
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["leave-requests"] }); toast.success("Leave request submitted!"); setShowAddLeave(false); },
-    onError: () => toast.error("Failed to submit leave request"),
+    onError: (err: Error) => toast.error(err.message || "Failed to submit leave request"),
   });
 
   const approveMut = useMutation({
     mutationFn: (data: { id: number; approved_by: string }) => approveLeaveRequest(data.id, data.approved_by),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["leave-requests"] }); toast.success("Leave approved!"); },
-    onError: () => toast.error("Failed to approve leave"),
+    onError: (err: Error) => toast.error(err.message || "Failed to approve leave"),
   });
 
   const markAttMut = useMutation({
     mutationFn: markAttendance,
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["attendance"] }); toast.success("Attendance marked!"); },
-    onError: () => toast.error("Failed to mark attendance"),
+    onError: (err: Error) => toast.error(err.message || "Failed to mark attendance"),
   });
 
   const activeEmployees = employees.filter(e => e.status === "Active").length;

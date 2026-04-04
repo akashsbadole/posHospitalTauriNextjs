@@ -256,7 +256,7 @@ export interface OtSchedule {
 
 export interface OtTheatre {
   id: number; theatre_name: string; theatre_code: string;
-  location?: string; is_active: boolean; created_at: string;
+  location?: string; is_operational: boolean; created_at: string;
 }
 
 // Emergency / ER

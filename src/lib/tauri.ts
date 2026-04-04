@@ -41,7 +41,7 @@ export const updateStaff             = (id: number, data: Partial<Staff>) => cmd
 export const deleteStaff             = (id: number)     => cmd<void>("delete_staff", { id });
 
 // Appointments
-export const getAppointments         = (date?: string, doctor_id?: number) => cmd<Appointment[]>("get_appointments", { date, doctor_id });
+export const getAppointments         = (date?: string, doctor_id?: number, patient_id?: number) => cmd<Appointment[]>("get_appointments", { date, doctor_id, patient_id });
 export const getAppointmentById      = (id: number)     => cmd<Appointment>("get_appointment_by_id", { id });
 export const createAppointment       = (data: Omit<Appointment,"id"|"appointment_code"|"created_at"|"patient_name"|"doctor_name">) => cmd<Appointment>("create_appointment", { data });
 export const updateAppointmentStatus = (id: number, status: AppointmentStatus) => cmd<void>("update_appointment_status", { id, status });
@@ -97,6 +97,7 @@ export const getInventory            = (category?: InventoryItem["category"]) =>
 export const getLowStockItems        = ()               => cmd<InventoryItem[]>("get_low_stock_items");
 export const updateStock             = (item_id: number, quantity: number, operation: "add"|"subtract") => cmd<void>("update_stock", { item_id, quantity, operation });
 export const createInventoryItem     = (data: Omit<InventoryItem,"id"|"item_code">) => cmd<InventoryItem>("create_inventory_item", { data });
+export const updateInventoryItem     = (id: number, data: Partial<InventoryItem>) => cmd<InventoryItem>("update_inventory_item", { id, data });
 export const deleteInventoryItem     = (id: number)     => cmd<void>("delete_inventory_item", { id });
 
 // Audit
