@@ -1,20 +1,23 @@
 "use client";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { X } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { createPatient } from "@/lib/tauri";
+import { createPatient, getDoctors } from "@/lib/tauri";
 import { toast } from "sonner";
+import type { Doctor } from "@/types";
 
 const schema = z.object({
-  full_name: z.string().min(2),
-  dob: z.string().min(1),
+  full_name: z.string().min(2, "Name is required"),
+  dob: z.string().min(1, "Date of birth is required"),
   gender: z.enum(["Male","Female","Other"]),
-  phone: z.string().min(10),
+  phone: z.string().min(10, "Valid phone required"),
   email: z.string().email().optional().or(z.literal("")),
   blood_group: z.enum(["A+","A-","B+","B-","O+","O-","AB+","AB-"] as [string,...string[]]),
   department: z.string(),
+  assigned_doctor_id: z.number().optional().nullable(),
   address: z.string().optional(),
   allergies: z.string().optional(),
   chronic_conditions: z.string().optional(),
@@ -29,14 +32,44 @@ type F = z.infer<typeof schema>;
 const DEPTS = ["General Medicine","Cardiology","Neurology","Orthopedics","Gynecology","Pediatrics","Radiology","ENT","Dermatology","Oncology","Psychiatry","Urology"];
 
 export function NewPatientModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [doctors, setDoctors] = useState<Doctor[]>([]);
   const qc = useQueryClient();
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<F>({
+
+  const { register, handleSubmit, reset, formState: { errors }, watch, setValue } = useForm<F>({
     resolver: zodResolver(schema),
     defaultValues: { gender:"Male", blood_group:"O+", department:"General Medicine", status:"OPD" },
   });
 
+  useEffect(() => {
+    if (open) {
+      getDoctors().then(setDoctors);
+    }
+  }, [open]);
+
+  const selectedDoctorId = watch("assigned_doctor_id");
+
+  useEffect(() => {
+    if (selectedDoctorId) {
+      const doc = doctors.find(d => d.id === selectedDoctorId);
+      if (doc) {
+        setValue("department", doc.specialization);
+      }
+    }
+  }, [selectedDoctorId, doctors, setValue]);
+
   const mut = useMutation({
-    mutationFn: (d: F) => createPatient(d as Parameters<typeof createPatient>[0]),
+    mutationFn: (d: F) => createPatient({
+      ...d,
+      assigned_doctor_id: d.assigned_doctor_id || undefined,
+      email: d.email || undefined,
+      address: d.address || undefined,
+      allergies: d.allergies || undefined,
+      chronic_conditions: d.chronic_conditions || undefined,
+      emergency_contact: d.emergency_contact || undefined,
+      emergency_phone: d.emergency_phone || undefined,
+      insurance_provider: d.insurance_provider || undefined,
+      insurance_number: d.insurance_number || undefined,
+    } as any),
     onSuccess: (p) => {
       toast.success(`Patient ${p.patient_code} registered!`);
       qc.invalidateQueries({ queryKey: ["patients"] });
@@ -73,10 +106,19 @@ export function NewPatientModal({ open, onClose }: { open: boolean; onClose: () 
             </div>
             <div><label className="form-label">Email</label><input type="email" {...register("email")} placeholder="optional" /></div>
             <div><label className="form-label">Blood Group *</label>
-              <select {...register("blood_group")}>{["A+","A-","B+","B-","O+","O-","AB+","AB-"].map(g=><option key={g}>{g}</option>)}</select>
+              <select {...register("blood_group")} className="w-full">{["A+","A-","B+","B-","O+","O-","AB+","AB-"].map(g=><option key={g}>{g}</option>)}</select>
+            </div>
+            <div>
+              <label className="form-label">Assigned Doctor</label>
+              <select {...register("assigned_doctor_id", { valueAsNumber: true })} className="w-full">
+                <option value="">Select Doctor</option>
+                {doctors.map(d => (
+                  <option key={d.id} value={d.id}>{d.full_name} - {d.specialization}</option>
+                ))}
+              </select>
             </div>
             <div><label className="form-label">Department *</label>
-              <select {...register("department")}>{DEPTS.map(d=><option key={d}>{d}</option>)}</select>
+              <select {...register("department")} className="w-full">{DEPTS.map(d=><option key={d}>{d}</option>)}</select>
             </div>
             <div className="col-span-2"><label className="form-label">Address</label><input {...register("address")} placeholder="Street, City, State" /></div>
             <div><label className="form-label">Known Allergies</label><input {...register("allergies")} placeholder="e.g. Penicillin" /></div>

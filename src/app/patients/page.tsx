@@ -44,7 +44,7 @@ export default function PatientsPage() {
     queryFn: () => getPatients(debouncedSearch || undefined, status || undefined),
   });
 
-  const totalPages = Math.ceil(patients.length / ITEMS_PER_PAGE);
+  const totalPages = Math.max(1, Math.ceil(patients.length / ITEMS_PER_PAGE));
   const paginatedPatients = patients.slice(
     (currentPage - 1) * ITEMS_PER_PAGE,
     currentPage * ITEMS_PER_PAGE
@@ -57,7 +57,7 @@ export default function PatientsPage() {
       toast.success("Patient deleted");
       setDeleteId(null);
     },
-    onError: () => toast.error("Delete failed"),
+    onError: (err: Error) => toast.error(err.message || "Delete failed"),
   });
 
   const handleDelete = () => {

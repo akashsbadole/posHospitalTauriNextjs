@@ -39,14 +39,14 @@ export default function LoginPage() {
     }
   }
 
-  async function handleDemoLogin(role: string, label: string) {
+  async function handleDemoLogin(username: string) {
+    const userDef = DEMO_USERS.find(u => u.username === username);
+    if (!userDef) return;
+
     setLoading(true);
     try {
-      const demoUser = await loginUser(role.toLowerCase(), "demo123");
-      setAuthUser({
-        ...demoUser,
-        full_name: label,
-      });
+      const user = await loginUser(userDef.username, userDef.password);
+      setAuthUser(user);
       setIsAuthenticated(true);
       router.push("/dashboard");
     } catch {
@@ -78,7 +78,7 @@ export default function LoginPage() {
                 return (
                   <button
                     key={user.role}
-                    onClick={() => handleDemoLogin(user.role, user.label)}
+                    onClick={() => handleDemoLogin(user.username)}
                     disabled={loading}
                     className="flex items-center gap-2 px-3 py-2 bg-surface2 border border-border rounded-lg text-xs text-muted hover:bg-surface3 hover:text-white transition-all"
                   >

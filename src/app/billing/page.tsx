@@ -28,6 +28,7 @@ export default function BillingPage() {
   const payMut = useMutation({
     mutationFn:({id,amount}:{id:number;amount:number})=>recordPayment(id,amount,"Cash"),
     onSuccess:()=>{ qc.invalidateQueries({queryKey:["invoices"]}); toast.success("Payment recorded"); },
+    onError: (err: Error) => toast.error(err.message || "Failed to record payment"),
   });
 
   const totalRevenue = invoices.filter(i=>i.status==="Paid").reduce((s,i)=>s+i.paid_amount,0);

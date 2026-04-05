@@ -90,6 +90,7 @@ pub fn run() {
             commands::create_invoice,
             commands::record_payment,
             commands::export_invoice_pdf,
+            commands::get_tax_report,
             commands::get_revenue_by_range,
             // Insurance
             commands::get_insurance_claims,
@@ -100,6 +101,7 @@ pub fn run() {
             commands::get_low_stock_items,
             commands::update_stock,
             commands::create_inventory_item,
+            commands::update_inventory_item,
             commands::delete_inventory_item,
             // Audit
             commands::get_audit_logs,

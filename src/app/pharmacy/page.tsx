@@ -29,6 +29,7 @@ export default function PharmacyPage() {
   const stockMut = useMutation({
     mutationFn:({id,qty,op}:{id:number;qty:number;op:"add"|"subtract"})=>updateStock(id,qty,op),
     onSuccess:()=>{ qc.invalidateQueries({queryKey:["inventory"]}); qc.invalidateQueries({queryKey:["low-stock"]}); toast.success("Stock updated"); },
+    onError: (err: Error) => toast.error(err.message || "Failed to update stock"),
   });
 
   const display = tab === "low" ? lowItems : items.filter(i=>!search||i.name.toLowerCase().includes(search.toLowerCase()));

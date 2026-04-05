@@ -27,6 +27,7 @@ export default function AppointmentsPage() {
   const mut = useMutation({
     mutationFn: ({ id, status }: { id:number; status:AppointmentStatus }) => updateAppointmentStatus(id, status),
     onSuccess: () => { qc.invalidateQueries({ queryKey:["appointments"] }); toast.success("Status updated"); },
+    onError: (err: Error) => toast.error(err.message || "Failed to update status"),
   });
 
   const counts = { total:appts.length, scheduled:appts.filter(a=>a.status==="Scheduled").length, checkedIn:appts.filter(a=>a.status==="Checked In").length, completed:appts.filter(a=>a.status==="Completed").length };

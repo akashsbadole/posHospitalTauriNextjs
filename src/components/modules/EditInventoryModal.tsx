@@ -5,7 +5,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { updateStock, deleteInventoryItem } from "@/lib/tauri";
+import { updateInventoryItem, deleteInventoryItem } from "@/lib/tauri";
 import { toast } from "sonner";
 import type { InventoryItem } from "@/types";
 
@@ -68,6 +68,16 @@ export function EditInventoryModal({ item, open, onClose }: Props) {
       });
     }
   }, [item, reset]);
+
+  const updateMut = useMutation({
+    mutationFn: (data: F) => updateInventoryItem(item!.id, data as Partial<InventoryItem>),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["inventory"] });
+      toast.success("Inventory item updated!");
+      onClose();
+    },
+    onError: () => toast.error("Failed to update item"),
+  });
 
   const deleteMut = useMutation({
     mutationFn: (id: number) => deleteInventoryItem(id),
@@ -160,7 +170,9 @@ export function EditInventoryModal({ item, open, onClose }: Props) {
           </button>
           <div className="flex gap-3">
             <button onClick={onClose} className="btn btn-ghost">Cancel</button>
-            <button onClick={() => toast.info("Edit saved (stock update only)")} className="btn btn-primary">Save Changes</button>
+            <button onClick={handleSubmit(d => updateMut.mutate(d))} disabled={updateMut.isPending} className="btn btn-primary">
+              {updateMut.isPending ? "Saving..." : "Save Changes"}
+            </button>
           </div>
         </div>
       </div>

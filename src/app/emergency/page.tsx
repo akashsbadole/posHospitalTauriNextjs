@@ -7,6 +7,7 @@ import { AlertTriangle, Plus, User, Activity } from "lucide-react";
 
 export default function EmergencyPage() {
   const [showAdd, setShowAdd] = useState(false);
+  const [showAdmit, setShowAdmit] = useState<number | null>(null);
   const qc = useQueryClient();
 
   const { data: cases = [], isLoading } = useQuery({ queryKey: ["emergency-cases"], queryFn: () => getEmergencyCases() });
@@ -63,9 +64,9 @@ export default function EmergencyPage() {
                   <td className="text-muted">{new Date(c.arrival_time).toLocaleTimeString()}</td>
                   <td><span className={`badge ${c.status === "Discharged" ? "badge-green" : c.status === "Admitted" ? "badge-blue" : "badge-yellow"}`}>{c.status}</span></td>
                   <td>
-                    {c.status !== "Discharged" && (
+                    {c.status !== "Discharged" && c.status !== "Admitted" && (
                       <div className="flex gap-1">
-                        <button onClick={() => updateMut.mutate({ id: c.id, status: "Admitted", admitted_to: wards[0]?.id })} className="btn btn-sm btn-ghost">Admit</button>
+                        <button onClick={() => setShowAdmit(c.id)} className="btn btn-sm btn-ghost">Admit</button>
                         <button onClick={() => updateMut.mutate({ id: c.id, status: "Discharged", outcome: "Treated" })} className="btn btn-sm btn-success">Discharge</button>
                       </div>
                     )}
@@ -76,6 +77,29 @@ export default function EmergencyPage() {
           </table>
         )}
       </div>
+
+      {showAdmit && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="bg-surface border border-border2 rounded-2xl w-[400px] p-6 space-y-4">
+            <h2 className="font-display font-bold text-lg">Admit to Ward</h2>
+            <form onSubmit={e => { e.preventDefault(); const f = e.target as HTMLFormElement; updateMut.mutate({ id: showAdmit, status: "Admitted", admitted_to: parseInt((f.elements.namedItem("ward_id") as HTMLSelectElement).value) }); setShowAdmit(null); }}>
+              <div className="space-y-4">
+                <div>
+                  <label className="form-label">Select Ward *</label>
+                  <select name="ward_id" required className="select">
+                    <option value="">Select Ward</option>
+                    {wards.map(w => <option key={w.id} value={w.id}>{w.ward_name} ({w.department})</option>)}
+                  </select>
+                </div>
+                <div className="flex gap-3 justify-end pt-2">
+                  <button type="button" onClick={() => setShowAdmit(null)} className="btn btn-ghost">Cancel</button>
+                  <button type="submit" className="btn btn-primary">Confirm Admission</button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {showAdd && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center">

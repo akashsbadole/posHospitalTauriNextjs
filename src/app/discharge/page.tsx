@@ -13,7 +13,7 @@ export default function DischargePage() {
   const { data: patients = [] } = useQuery({ queryKey: ["patients"], queryFn: () => getPatients() });
   const { data: doctors = [] } = useQuery({ queryKey: ["doctors"], queryFn: getDoctors });
 
-  const createMut = useMutation({ mutationFn: ({ data, meds }: { data: any; meds: any[] }) => createDischargeSummary(data, meds), onSuccess: () => { qc.invalidateQueries({ queryKey: ["discharge-summaries"] }); toast.success("Discharge summary created!"); setShowAdd(false); }, onError: () => toast.error("Failed") });
+  const createMut = useMutation({ mutationFn: ({ data, meds }: { data: any; meds: any[] }) => createDischargeSummary(data, meds), onSuccess: () => { qc.invalidateQueries({ queryKey: ["discharge-summaries"] }); toast.success("Discharge summary created!"); setShowAdd(false); }, onError: (err: Error) => toast.error(err.message || "Failed to create summary") });
 
   const total = summaries.length;
   const regular = summaries.filter(s => s.discharge_type === "Regular").length;

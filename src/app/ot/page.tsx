@@ -15,7 +15,7 @@ export default function OtPage() {
   const { data: doctors = [] } = useQuery({ queryKey: ["doctors"], queryFn: getDoctors });
   const { data: patients = [] } = useQuery({ queryKey: ["patients"], queryFn: () => getPatients() });
 
-  const createMut = useMutation({ mutationFn: createOtSchedule, onSuccess: () => { qc.invalidateQueries({ queryKey: ["ot-schedules"] }); toast.success("OT scheduled!"); setShowAdd(false); }, onError: () => toast.error("Failed") });
+  const createMut = useMutation({ mutationFn: createOtSchedule, onSuccess: () => { qc.invalidateQueries({ queryKey: ["ot-schedules"] }); toast.success("OT scheduled!"); setShowAdd(false); }, onError: (err: Error) => toast.error(err.message || "Failed to schedule surgery") });
 
   const scheduled = schedules.filter(s => s.status === "Scheduled").length;
   const inProgress = schedules.filter(s => s.status === "InProgress").length;
