@@ -1,8 +1,8 @@
 "use client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getInventory, getLowStockItems, updateStock, createInventoryItem } from "@/lib/tauri";
+import { getInventory, getLowStockItems, updateStock, createInventoryItem, getExpiringInventory } from "@/lib/tauri";
 import { useState } from "react";
-import { Plus, Search, AlertTriangle, TrendingUp, TrendingDown, Package, Eye, Edit2 } from "lucide-react";
+import { Plus, Search, AlertTriangle, TrendingUp, TrendingDown, Package, Eye, Edit2, Clock } from "lucide-react";
 import { toast } from "sonner";
 import type { InventoryItem } from "@/types";
 import { NewInventoryModal } from "@/components/modules/NewInventoryModal";
@@ -17,7 +17,7 @@ const CAT_BADGE: Record<InventoryItem["category"],string> = {
 export default function PharmacyPage() {
   const [search, setSearch] = useState("");
   const [cat, setCat] = useState("");
-  const [tab, setTab] = useState<"all"|"low">("all");
+  const [tab, setTab] = useState<"all"|"low"|"expiring">("all");
   const [showNewModal, setShowNewModal] = useState(false);
   const [editItem, setEditItem] = useState<InventoryItem | null>(null);
   const [historyItem, setHistoryItem] = useState<{id: number; name: string} | null>(null);
@@ -25,6 +25,7 @@ export default function PharmacyPage() {
 
   const { data: items = [], isLoading } = useQuery({ queryKey:["inventory",cat], queryFn:()=>getInventory(cat as InventoryItem["category"]||undefined) });
   const { data: lowItems = [] } = useQuery({ queryKey:["low-stock"], queryFn: getLowStockItems });
+  const { data: expiringItems = [] } = useQuery({ queryKey: ["expiring-inventory"], queryFn: () => getExpiringInventory(30) });
 
   const stockMut = useMutation({
     mutationFn:({id,qty,op}:{id:number;qty:number;op:"add"|"subtract"})=>updateStock(id,qty,op),
@@ -32,7 +33,7 @@ export default function PharmacyPage() {
     onError: (err: Error) => toast.error(err.message || "Failed to update stock"),
   });
 
-  const display = tab === "low" ? lowItems : items.filter(i=>!search||i.name.toLowerCase().includes(search.toLowerCase()));
+  const display = tab === "low" ? lowItems : tab === "expiring" ? expiringItems : items.filter(i=>!search||i.name.toLowerCase().includes(search.toLowerCase()));
   const totalValue = items.reduce((s,i)=>s+i.current_stock*i.unit_price,0);
 
   return (
@@ -84,6 +85,9 @@ export default function PharmacyPage() {
           <div onClick={()=>setTab("all")} className={`tab-item ${tab==="all"?"active":""}`}>All Items</div>
           <div onClick={()=>setTab("low")} className={`tab-item ${tab==="low"?"active":""} ${lowItems.length>0?"text-danger":""}`}>
             Low Stock {lowItems.length > 0 && <span className="ml-1 text-[10px] bg-danger/20 text-danger px-1.5 py-0.5 rounded-full">{lowItems.length}</span>}
+          </div>
+          <div onClick={()=>setTab("expiring")} className={`tab-item ${tab==="expiring"?"active":""} ${expiringItems.length>0?"text-warning":""}`}>
+            Expiring Soon {expiringItems.length > 0 && <span className="ml-1 text-[10px] bg-warning/20 text-warning px-1.5 py-0.5 rounded-full">{expiringItems.length}</span>}
           </div>
         </div>
         <div className="flex-1 relative">

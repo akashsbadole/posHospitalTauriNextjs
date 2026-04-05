@@ -1238,6 +1238,56 @@ pub struct RolePermission {
     pub can_delete: bool,
 }
 
+// ─────────────────────────────────────────
+// MEDICAL RECORDS (EMR)
+// ─────────────────────────────────────────
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct MedicalRecord {
+    pub id: i64,
+    pub patient_id: i64,
+    pub doctor_id: i64,
+    pub doctor_name: Option<String>,
+    pub record_type: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub attachment_path: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateMedicalRecord {
+    pub patient_id: i64,
+    pub doctor_id: i64,
+    pub record_type: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub attachment_path: Option<String>,
+}
+
+// ─────────────────────────────────────────
+// STAFF SHIFT ROSTER
+// ─────────────────────────────────────────
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct StaffShift {
+    pub id: i64,
+    pub employee_id: i64,
+    pub employee_name: Option<String>,
+    pub shift_date: String,
+    pub shift_type: String,
+    pub status: String,
+    pub notes: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateStaffShift {
+    pub employee_id: i64,
+    pub shift_date: String,
+    pub shift_type: String,
+    pub status: Option<String>,
+    pub notes: Option<String>,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct UpdateRolePermission {
     pub role: String,

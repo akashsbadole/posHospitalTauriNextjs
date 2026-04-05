@@ -1,16 +1,20 @@
 "use client";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getEmployees, createEmployee, getLeaveRequests, createLeaveRequest, approveLeaveRequest, getAttendance, markAttendance } from "@/lib/tauri";
+import { getEmployees, createEmployee, getLeaveRequests, createLeaveRequest, approveLeaveRequest, getAttendance, markAttendance, getPayrollMonths, createPayrollMonth, getPayrollEntries, calculatePayroll, updatePayrollStatus, getStaffShifts, assignStaffShift } from "@/lib/tauri";
 import { toast } from "sonner";
-import { UserPlus, Calendar, Clock, CheckCircle, XCircle, Plus, Search } from "lucide-react";
+import { UserPlus, Calendar, Clock, CheckCircle, XCircle, Plus, Search, DollarSign, Receipt, Calculator, Briefcase } from "lucide-react";
 
-type Tab = "employees" | "leaves" | "attendance";
+type Tab = "employees" | "leaves" | "attendance" | "payroll" | "shifts";
 
 export default function HrPage() {
   const [tab, setTab] = useState<Tab>("employees");
   const [showAddEmployee, setShowAddEmployee] = useState(false);
   const [showAddLeave, setShowAddLeave] = useState(false);
+  const [showAddPayrollMonth, setShowAddPayrollMonth] = useState(false);
+  const [selectedMonthId, setSelectedMonthId] = useState<number | null>(null);
+  const [shiftDate, setShiftDate] = useState(new Date().toISOString().split("T")[0]);
+
   const qc = useQueryClient();
 
   const { data: employees = [], isLoading: empLoading } = useQuery({
@@ -26,6 +30,22 @@ export default function HrPage() {
   const { data: attendance = [], isLoading: attLoading } = useQuery({
     queryKey: ["attendance"],
     queryFn: () => getAttendance(),
+  });
+
+  const { data: payrollMonths = [], isLoading: payrollMonthsLoading } = useQuery({
+    queryKey: ["payroll-months"],
+    queryFn: () => getPayrollMonths(),
+  });
+
+  const { data: payrollEntries = [], isLoading: payrollEntriesLoading } = useQuery({
+    queryKey: ["payroll-entries", selectedMonthId],
+    queryFn: () => selectedMonthId ? getPayrollEntries(selectedMonthId) : Promise.resolve([]),
+    enabled: !!selectedMonthId,
+  });
+
+  const { data: shifts = [] } = useQuery({
+    queryKey: ["staff-shifts", shiftDate],
+    queryFn: () => getStaffShifts(shiftDate, shiftDate),
   });
 
   const createEmpMut = useMutation({
@@ -52,6 +72,30 @@ export default function HrPage() {
     onError: (err: Error) => toast.error(err.message || "Failed to mark attendance"),
   });
 
+  const createPayrollMonthMut = useMutation({
+    mutationFn: createPayrollMonth,
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["payroll-months"] }); toast.success("Payroll month created!"); setShowAddPayrollMonth(false); },
+    onError: (err: Error) => toast.error(err.message || "Failed to create payroll month"),
+  });
+
+  const calculatePayrollMut = useMutation({
+    mutationFn: calculatePayroll,
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["payroll-entries", selectedMonthId] }); toast.success("Payroll calculated!"); },
+    onError: (err: Error) => toast.error(err.message || "Failed to calculate payroll"),
+  });
+
+  const updatePayrollStatusMut = useMutation({
+    mutationFn: (data: { id: number; status: string }) => updatePayrollStatus(data.id, data.status),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["payroll-entries", selectedMonthId] }); toast.success("Payroll status updated!"); },
+    onError: (err: Error) => toast.error(err.message || "Failed to update payroll status"),
+  });
+
+  const assignShiftMut = useMutation({
+    mutationFn: assignStaffShift,
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["staff-shifts"] }); toast.success("Shift assigned!"); },
+    onError: () => toast.error("Failed to assign shift"),
+  });
+
   const activeEmployees = employees.filter(e => e.status === "Active").length;
   const pendingLeaves = leaves.filter(l => l.status === "Pending").length;
   const presentToday = attendance.filter(a => a.status === "Present").length;
@@ -74,6 +118,7 @@ export default function HrPage() {
           {tab === "employees" && <button onClick={() => setShowAddEmployee(true)} className="btn btn-primary"><UserPlus size={16} /> Add Employee</button>}
           {tab === "leaves" && <button onClick={() => setShowAddLeave(true)} className="btn btn-primary"><Plus size={16} /> Request Leave</button>}
           {tab === "attendance" && <button onClick={markTodayAtt} className="btn btn-primary"><CheckCircle size={16} /> Mark Today's Attendance</button>}
+          {tab === "payroll" && <button onClick={() => setShowAddPayrollMonth(true)} className="btn btn-primary"><Plus size={16} /> New Payroll Month</button>}
         </div>
       </div>
 
@@ -100,6 +145,8 @@ export default function HrPage() {
         <button onClick={() => setTab("employees")} className={`tab-item ${tab === "employees" ? "active" : ""}`}>Employees</button>
         <button onClick={() => setTab("leaves")} className={`tab-item ${tab === "leaves" ? "active" : ""}`}>Leave Requests</button>
         <button onClick={() => setTab("attendance")} className={`tab-item ${tab === "attendance" ? "active" : ""}`}>Attendance</button>
+        <button onClick={() => setTab("payroll")} className={`tab-item ${tab === "payroll" ? "active" : ""}`}>Payroll</button>
+        <button onClick={() => setTab("shifts")} className={`tab-item ${tab === "shifts" ? "active" : ""}`}>Shifts</button>
       </div>
 
       <div className="card">
@@ -171,7 +218,156 @@ export default function HrPage() {
             </table>
           )
         )}
+
+        {tab === "payroll" && (
+          <div className="flex gap-4 p-4 min-h-[400px]">
+            <div className="w-1/3 border-r border-border pr-4">
+              <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2"><Calendar size={14} /> Payroll Months</h3>
+              {payrollMonthsLoading ? <div className="text-muted text-sm py-4">Loading...</div> : (
+                <div className="space-y-2">
+                  {payrollMonths.map(m => (
+                    <button
+                      key={m.id}
+                      onClick={() => setSelectedMonthId(m.id)}
+                      className={`w-full text-left p-3 rounded-lg border transition-all ${selectedMonthId === m.id ? "bg-accent/10 border-accent text-accent" : "bg-surface hover:bg-white/5 border-border text-subtle"}`}
+                    >
+                      <div className="font-bold">{m.month_year}</div>
+                      <div className="text-[10px] opacity-70">{m.start_date} to {m.end_date}</div>
+                      <span className={`text-[10px] mt-1 inline-block px-1.5 py-0.5 rounded-full ${m.status === "Processed" ? "bg-green-500/20 text-green-400" : "bg-yellow-500/20 text-yellow-400"}`}>{m.status}</span>
+                    </button>
+                  ))}
+                  {payrollMonths.length === 0 && <div className="text-muted text-sm py-8 text-center italic">No payroll months created</div>}
+                </div>
+              )}
+            </div>
+            <div className="flex-1 pl-2">
+              {!selectedMonthId ? (
+                <div className="h-full flex flex-col items-center justify-center text-muted italic">
+                  <Receipt size={48} className="mb-4 opacity-20" />
+                  Select a month to view payroll entries
+                </div>
+              ) : (
+                <div>
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-sm font-bold text-white">Payroll Entries</h3>
+                    <button
+                      onClick={() => calculatePayrollMut.mutate(selectedMonthId)}
+                      disabled={calculatePayrollMut.isPending}
+                      className="btn btn-sm btn-ghost border border-border hover:bg-accent/10 hover:text-accent flex items-center gap-2"
+                    >
+                      <Calculator size={14} /> Calculate Payroll
+                    </button>
+                  </div>
+                  {payrollEntriesLoading ? <div className="text-muted text-sm py-12 text-center">Loading entries...</div> : (
+                    <table className="data-table">
+                      <thead><tr><th>Employee</th><th>Basic</th><th>Allow.</th><th>Deduct.</th><th>Net</th><th>Status</th><th>Action</th></tr></thead>
+                      <tbody>
+                        {payrollEntries.map(entry => (
+                          <tr key={entry.id}>
+                            <td className="font-medium text-white">{entry.employee_name}</td>
+                            <td>₹{entry.basic_salary.toLocaleString()}</td>
+                            <td className="text-green-400">+₹{entry.allowances.toLocaleString()}</td>
+                            <td className="text-red-400">-₹{entry.deductions.toLocaleString()}</td>
+                            <td className="font-bold">₹{entry.net_salary.toLocaleString()}</td>
+                            <td><span className={`badge ${entry.status === "Paid" ? "badge-green" : "badge-yellow"}`}>{entry.status}</span></td>
+                            <td>
+                              {entry.status === "Pending" && (
+                                <button onClick={() => updatePayrollStatusMut.mutate({ id: entry.id, status: "Paid" })} className="text-accent hover:underline text-xs">Mark Paid</button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                        {payrollEntries.length === 0 && (
+                          <tr><td colSpan={7} className="py-12 text-center text-muted italic">No entries found. Click calculate to generate entries.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {tab === "shifts" && (
+          <div className="p-5">
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h3 className="font-display font-bold text-base text-white">Daily Shift Roster</h3>
+                <p className="text-xs text-muted">Manage staff shift assignments</p>
+              </div>
+              <input
+                type="date"
+                value={shiftDate}
+                onChange={(e) => setShiftDate(e.target.value)}
+                className="input w-40"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-3">
+              {employees.filter(e => e.status === "Active").map(emp => {
+                const empShift = shifts.find(s => s.employee_id === emp.id);
+                return (
+                  <div key={emp.id} className="bg-surface2 border border-border rounded-xl p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full bg-purple/10 flex items-center justify-center text-purple font-bold text-xs">
+                        {emp.first_name[0]}{emp.last_name[0]}
+                      </div>
+                      <div>
+                        <div className="text-sm font-bold text-white">{emp.full_name}</div>
+                        <div className="text-[11px] text-subtle">{emp.designation} • {emp.department}</div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-4">
+                      <div className="flex gap-1 bg-surface border border-border rounded-lg p-0.5">
+                        {["Morning", "Evening", "Night", "On-Call", "Holiday"].map(type => (
+                          <button
+                            key={type}
+                            onClick={() => assignShiftMut.mutate({
+                              employee_id: emp.id,
+                              shift_date: shiftDate,
+                              shift_type: type,
+                            })}
+                            className={`px-2.5 py-1 rounded-md text-[10px] font-bold transition-all ${empShift?.shift_type === type ? "bg-accent text-white shadow-lg" : "text-muted hover:text-white"}`}
+                          >
+                            {type}
+                          </button>
+                        ))}
+                      </div>
+                      <span className={`badge text-[10px] ${empShift ? "badge-green" : "badge-gray opacity-50"}`}>
+                        {empShift ? "Assigned" : "Not Set"}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
+
+      {showAddPayrollMonth && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center anim-fade-in">
+          <div className="bg-surface border border-border2 rounded-2xl w-[400px] flex flex-col shadow-card">
+            <div className="px-6 py-4 border-b border-border flex items-center justify-between">
+              <h2 className="font-display font-bold text-base">New Payroll Month</h2>
+              <button onClick={() => setShowAddPayrollMonth(false)} className="text-subtle hover:text-white"><XCircle size={18} /></button>
+            </div>
+            <form onSubmit={e => { e.preventDefault(); const f = e.target as HTMLFormElement; createPayrollMonthMut.mutate({ month_year: (f.elements.namedItem("month_year") as HTMLInputElement).value, start_date: (f.elements.namedItem("start_date") as HTMLInputElement).value, end_date: (f.elements.namedItem("end_date") as HTMLInputElement).value }); }} className="p-6 space-y-4">
+              <div><label className="form-label">Month & Year *</label><input name="month_year" placeholder="e.g. October 2023" required className="input" /></div>
+              <div className="grid grid-cols-2 gap-4">
+                <div><label className="form-label">Start Date *</label><input name="start_date" type="date" required className="input" /></div>
+                <div><label className="form-label">End Date *</label><input name="end_date" type="date" required className="input" /></div>
+              </div>
+              <div className="flex gap-3 justify-end pt-4">
+                <button type="button" onClick={() => setShowAddPayrollMonth(false)} className="btn btn-ghost">Cancel</button>
+                <button type="submit" className="btn btn-primary">Create Month</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {showAddEmployee && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center anim-fade-in">

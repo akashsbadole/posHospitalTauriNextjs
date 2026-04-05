@@ -1269,6 +1269,27 @@ pub fn get_inventory(state: State<AppState>, category: Option<String>) -> Result
 }
 
 #[tauri::command]
+pub fn get_expiring_inventory(state: State<AppState>, days: Option<i64>) -> Result<Vec<InventoryItem>, String> {
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    let d = days.unwrap_or(30);
+    let mut stmt = conn.prepare(
+        "SELECT id, item_code, name, category, current_stock, min_threshold, max_capacity, unit, unit_price, supplier, expiry_date, location, last_restocked
+         FROM inventory
+         WHERE expiry_date IS NOT NULL
+           AND expiry_date <= date('now', '+' || ?1 || ' days')
+           AND expiry_date >= date('now')
+         ORDER BY expiry_date ASC"
+    ).map_err(|e| e.to_string())?;
+    let items = stmt.query_map(params![d], |r| Ok(InventoryItem {
+        id: r.get(0)?, item_code: r.get(1)?, name: r.get(2)?, category: r.get(3)?,
+        current_stock: r.get(4)?, min_threshold: r.get(5)?, max_capacity: r.get(6)?,
+        unit: r.get(7)?, unit_price: r.get(8)?, supplier: r.get(9)?,
+        expiry_date: r.get(10)?, location: r.get(11)?, last_restocked: r.get(12)?,
+    })).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
+    Ok(items)
+}
+
+#[tauri::command]
 pub fn get_low_stock_items(state: State<AppState>) -> Result<Vec<InventoryItem>, String> {
     let conn = state.pool.get().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
@@ -2438,4 +2459,90 @@ pub fn update_role_permission(state: State<AppState>, data: UpdateRolePermission
     audit::log(&state.pool, &requester.unwrap_or_else(|| "System".to_string()), "Role permission updated", "settings", None, Some(&format!("{}:{}", data.role, data.module)));
     conn.query_row("SELECT id, role, module, can_view, can_create, can_edit, can_delete FROM role_permissions WHERE role = ?1 AND module = ?2", params![data.role, data.module],
         |r| Ok(RolePermission { id: r.get(0)?, role: r.get(1)?, module: r.get(2)?, can_view: r.get::<_, i64>(3)? == 1, can_create: r.get::<_, i64>(4)? == 1, can_edit: r.get::<_, i64>(5)? == 1, can_delete: r.get::<_, i64>(6)? == 1 })).map_err(|e| e.to_string())
+}
+
+// ─── MEDICAL RECORDS (EMR) ───────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn get_medical_records(state: State<AppState>, patient_id: i64) -> Result<Vec<MedicalRecord>, String> {
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(
+        "SELECT m.id, m.patient_id, m.doctor_id, d.full_name, m.record_type, m.title, m.description, m.attachment_path, m.created_at
+         FROM medical_records m JOIN doctors d ON m.doctor_id = d.id
+         WHERE m.patient_id = ?1 ORDER BY m.id DESC"
+    ).map_err(|e| e.to_string())?;
+    let records = stmt.query_map(params![patient_id], |r| Ok(MedicalRecord {
+        id: r.get(0)?, patient_id: r.get(1)?, doctor_id: r.get(2)?, doctor_name: r.get(3)?,
+        record_type: r.get(4)?, title: r.get(5)?, description: r.get(6)?, attachment_path: r.get(7)?,
+        created_at: r.get(8)?,
+    })).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
+    Ok(records)
+}
+
+#[tauri::command]
+pub fn create_medical_record(state: State<AppState>, data: CreateMedicalRecord) -> Result<MedicalRecord, String> {
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO medical_records (patient_id, doctor_id, record_type, title, description, attachment_path) VALUES (?1,?2,?3,?4,?5,?6)",
+        params![data.patient_id, data.doctor_id, data.record_type, data.title, data.description, data.attachment_path],
+    ).map_err(|e| e.to_string())?;
+    let id = conn.last_insert_rowid();
+    audit::log(&state.pool, "System", "Medical record added", "patient", Some(data.patient_id), Some(&data.title));
+
+    conn.query_row(
+        "SELECT m.id, m.patient_id, m.doctor_id, d.full_name, m.record_type, m.title, m.description, m.attachment_path, m.created_at
+         FROM medical_records m JOIN doctors d ON m.doctor_id = d.id WHERE m.id = ?1",
+        params![id],
+        |r| Ok(MedicalRecord {
+            id: r.get(0)?, patient_id: r.get(1)?, doctor_id: r.get(2)?, doctor_name: r.get(3)?,
+            record_type: r.get(4)?, title: r.get(5)?, description: r.get(6)?, attachment_path: r.get(7)?,
+            created_at: r.get(8)?,
+        }),
+    ).map_err(|e| e.to_string())
+}
+
+// ─── STAFF SHIFT ROSTER ──────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn get_staff_shifts(state: State<AppState>, from_date: String, to_date: String) -> Result<Vec<StaffShift>, String> {
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(
+        "SELECT s.id, s.employee_id, e.first_name || ' ' || e.last_name, s.shift_date, s.shift_type, s.status, s.notes, s.created_at
+         FROM staff_shifts s JOIN employees e ON s.employee_id = e.id
+         WHERE s.shift_date BETWEEN ?1 AND ?2 ORDER BY s.shift_date ASC"
+    ).map_err(|e| e.to_string())?;
+    let shifts = stmt.query_map(params![from_date, to_date], |r| Ok(StaffShift {
+        id: r.get(0)?, employee_id: r.get(1)?, employee_name: r.get(2)?, shift_date: r.get(3)?,
+        shift_type: r.get(4)?, status: r.get(5)?, notes: r.get(6)?, created_at: r.get(7)?,
+    })).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
+    Ok(shifts)
+}
+
+#[tauri::command]
+pub fn assign_staff_shift(state: State<AppState>, data: CreateStaffShift) -> Result<StaffShift, String> {
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    let status = data.status.unwrap_or_else(|| "Scheduled".to_string());
+    conn.execute(
+        "INSERT INTO staff_shifts (employee_id, shift_date, shift_type, status, notes)
+         VALUES (?1,?2,?3,?4,?5)
+         ON CONFLICT(employee_id, shift_date) DO UPDATE SET
+            shift_type = excluded.shift_type, status = excluded.status, notes = excluded.notes",
+        params![data.employee_id, data.shift_date, data.shift_type, status, data.notes],
+    ).map_err(|e| e.to_string())?;
+
+    let id: i64 = conn.query_row(
+        "SELECT id FROM staff_shifts WHERE employee_id = ?1 AND shift_date = ?2",
+        params![data.employee_id, data.shift_date],
+        |r| r.get(0)
+    ).map_err(|e| e.to_string())?;
+
+    conn.query_row(
+        "SELECT s.id, s.employee_id, e.first_name || ' ' || e.last_name, s.shift_date, s.shift_type, s.status, s.notes, s.created_at
+         FROM staff_shifts s JOIN employees e ON s.employee_id = e.id WHERE s.id = ?1",
+        params![id],
+        |r| Ok(StaffShift {
+            id: r.get(0)?, employee_id: r.get(1)?, employee_name: r.get(2)?, shift_date: r.get(3)?,
+            shift_type: r.get(4)?, status: r.get(5)?, notes: r.get(6)?, created_at: r.get(7)?,
+        }),
+    ).map_err(|e| e.to_string())
 }

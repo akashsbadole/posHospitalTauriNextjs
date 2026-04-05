@@ -16,6 +16,8 @@ const cmd = <T>(command: string, args?: Record<string, unknown>) =>
 
 // Dashboard
 export const getDashboardStats       = ()               => cmd<DashboardStats>("get_dashboard_stats");
+export const getTodayAdmissions      = ()               => cmd<Patient[]>("get_today_admissions");
+export const getTodayDischarges      = ()               => cmd<Patient[]>("get_today_discharges");
 export const getRecentActivity       = (limit = 20)     => cmd<AuditLog[]>("get_recent_activity", { limit });
 
 // Patients
@@ -95,6 +97,7 @@ export const updateClaimStatus       = (id: number, status: ClaimStatus, approve
 // Inventory
 export const getInventory            = (category?: InventoryItem["category"]) => cmd<InventoryItem[]>("get_inventory", { category });
 export const getLowStockItems        = ()               => cmd<InventoryItem[]>("get_low_stock_items");
+export const getExpiringInventory    = (days?: number)  => cmd<InventoryItem[]>("get_expiring_inventory", { days });
 export const updateStock             = (item_id: number, quantity: number, operation: "add"|"subtract") => cmd<void>("update_stock", { item_id, quantity, operation });
 export const createInventoryItem     = (data: Omit<InventoryItem,"id"|"item_code">) => cmd<InventoryItem>("create_inventory_item", { data });
 export const updateInventoryItem     = (id: number, data: Partial<InventoryItem>) => cmd<InventoryItem>("update_inventory_item", { id, data });
@@ -138,6 +141,11 @@ export const getMessageLogs          = (limit?: number)  => cmd<MessageLog[]>("g
 // Payroll & HR
 export const getEmployees           = (status?: string) => cmd<Employee[]>("get_employees", { status });
 export const createEmployee         = (data: { staff_id?: number; first_name: string; last_name: string; email: string; phone: string; department: string; designation: string; employee_type?: string; date_of_join: string; date_of_birth?: string; gender?: string; address?: string; bank_name?: string; bank_account?: string; ifsc_code?: string; pan_number?: string; aadhar_number?: string; basic_salary: number }) => cmd<Employee>("create_employee", { data });
+export const getPayrollMonths       = ()               => cmd<PayrollMonth[]>("get_payroll_months");
+export const createPayrollMonth     = (data: { month_year: string; start_date: string; end_date: string }) => cmd<PayrollMonth>("create_payroll_month", { data });
+export const getPayrollEntries      = (month_id: number) => cmd<PayrollEntry[]>("get_payroll_entries", { month_id });
+export const calculatePayroll       = (month_id: number) => cmd<void>("calculate_payroll", { month_id });
+export const updatePayrollStatus    = (id: number, status: string) => cmd<void>("update_payroll_entry_status", { id, status });
 export const getLeaveRequests        = (status?: string) => cmd<LeaveRequest[]>("get_leave_requests", { status });
 export const createLeaveRequest     = (data: { employee_id: number; leave_type: string; start_date: string; end_date: string; total_days: number; reason?: string }) => cmd<LeaveRequest>("create_leave_request", { data });
 export const approveLeaveRequest     = (id: number, approved_by: string) => cmd<void>("approve_leave_request", { id, approved_by });
@@ -203,3 +211,11 @@ export const markNotificationRead = (id: number) => cmd<void>("mark_notification
 // Role Permissions
 export const getRolePermissions = (role?: string) => cmd<RolePermission[]>("get_role_permissions", { role });
 export const updateRolePermission = (data: { role: string; module: string; can_view: boolean; can_create: boolean; can_edit: boolean; can_delete: boolean }) => cmd<RolePermission>("update_role_permission", { data });
+
+// Medical Records (EMR)
+export const getMedicalRecords = (patient_id: number) => cmd<MedicalRecord[]>("get_medical_records", { patient_id });
+export const createMedicalRecord = (data: Omit<MedicalRecord, "id" | "doctor_name" | "created_at">) => cmd<MedicalRecord>("create_medical_record", { data });
+
+// Staff Shifts
+export const getStaffShifts = (from_date: string, to_date: string) => cmd<StaffShift[]>("get_staff_shifts", { from_date, to_date });
+export const assignStaffShift = (data: { employee_id: number; shift_date: string; shift_type: string; status?: string; notes?: string }) => cmd<StaffShift>("assign_staff_shift", { data });
