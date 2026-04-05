@@ -426,6 +426,7 @@ pub struct DashboardStats {
     pub low_stock_items: i64,
     pub pending_claims: i64,
     pub discharges_today: i64,
+    pub admissions_today: i64,
     pub monthly_revenue: f64,
     pub new_patients_this_month: i64,
 }

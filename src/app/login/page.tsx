@@ -151,7 +151,7 @@ export default function LoginPage() {
           </form>
 
           <p className="text-center text-xs text-muted mt-6">
-            MediCore HMS v1.0.0 • Secure Login
+            MediCore HMS v0.1.0 • Secure Login
           </p>
         </div>
       </div>

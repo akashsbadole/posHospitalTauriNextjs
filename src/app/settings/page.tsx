@@ -1,11 +1,11 @@
 "use client";
 import { useState, useEffect } from "react";
-import { Save, Database, Cloud, Bell, Shield, Palette, Building, RefreshCw } from "lucide-react";
+import { Save, Database, Cloud, Bell, Shield, Palette, Building, RefreshCw, Info } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { getAllSettings, setSetting, backupDatabase, getSyncStatus, syncToCloud } from "@/lib/tauri";
 
-const SECTIONS = ["Hospital Info","Database","Cloud Sync","Notifications","Security","Appearance"] as const;
+const SECTIONS = ["Hospital Info","Database","Cloud Sync","Notifications","Security","Appearance","About"] as const;
 type Section = typeof SECTIONS[number];
 
 const ICONS: Record<Section, React.ReactNode> = {
@@ -15,6 +15,7 @@ const ICONS: Record<Section, React.ReactNode> = {
   "Notifications": <Bell size={15} />,
   "Security":      <Shield size={15} />,
   "Appearance":    <Palette size={15} />,
+  "About":         <Info size={15} />,
 };
 
 const DEFAULT_SETTINGS: Record<string, string> = {
@@ -317,6 +318,41 @@ export default function SettingsPage() {
                   <option>DD/MM/YYYY</option><option>MM/DD/YYYY</option><option>YYYY-MM-DD</option>
                 </select>
               </div>
+            </div>
+          )}
+
+          {active === "About" && (
+            <div className="flex flex-col items-center justify-center py-10 text-center">
+              <div className="w-20 h-20 bg-accent/10 rounded-3xl flex items-center justify-center mb-6 shadow-[0_0_20px_rgba(0,212,255,0.2)]">
+                <Building size={40} className="text-accent" />
+              </div>
+              <h2 className="text-2xl font-display font-extrabold text-white mb-2">MediCore HMS</h2>
+              <p className="text-muted text-sm mb-6 max-w-md">
+                A modern, full-featured Hospital Management System designed for efficiency and patient-centric care.
+              </p>
+
+              <div className="bg-surface2 border border-border rounded-2xl p-6 w-full max-w-sm space-y-4">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-muted">Version</span>
+                  <span className="text-white font-mono bg-surface3 px-2 py-0.5 rounded text-[11px]">v0.1.0</span>
+                </div>
+                <div className="flex justify-between items-center text-sm border-t border-border pt-4">
+                  <span className="text-muted">License</span>
+                  <span className="text-white">MIT License</span>
+                </div>
+                <div className="flex justify-between items-center text-sm border-t border-border pt-4">
+                  <span className="text-muted">Database</span>
+                  <span className="text-white">SQLite v3.x</span>
+                </div>
+                <div className="flex justify-between items-center text-sm border-t border-border pt-4">
+                  <span className="text-muted">Build Stack</span>
+                  <span className="text-white">Tauri 2 + Next.js</span>
+                </div>
+              </div>
+
+              <p className="mt-10 text-[11px] text-subtle">
+                &copy; 2026 MediCore Systems Inc. All rights reserved.
+              </p>
             </div>
           )}
         </div>

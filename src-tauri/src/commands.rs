@@ -79,12 +79,13 @@ pub fn get_dashboard_stats(state: State<AppState>) -> Result<DashboardStats, Str
     let low_stock_items: i64 = conn.query_row("SELECT COUNT(*) FROM inventory WHERE current_stock <= min_threshold", [], |r| r.get(0)).unwrap_or(0);
     let pending_claims: i64 = conn.query_row("SELECT COUNT(*) FROM insurance_claims WHERE status IN ('Draft','Submitted','Under Review')", [], |r| r.get(0)).unwrap_or(0);
     let discharges_today: i64 = conn.query_row("SELECT COUNT(*) FROM audit_logs WHERE action = 'Patient discharged' AND timestamp LIKE ?1", params![format!("{}%", today)], |r| r.get(0)).unwrap_or(0);
+    let admissions_today: i64 = conn.query_row("SELECT COUNT(*) FROM audit_logs WHERE action = 'Patient admitted' AND timestamp LIKE ?1", params![format!("{}%", today)], |r| r.get(0)).unwrap_or(0);
     let new_patients_this_month: i64 = conn.query_row("SELECT COUNT(*) FROM patients WHERE created_at >= ?1", params![month_start], |r| r.get(0)).unwrap_or(0);
 
     Ok(DashboardStats {
         total_patients, today_appointments, beds_occupied, total_beds,
         today_revenue, pending_labs, rx_due_refill, low_stock_items,
-        pending_claims, discharges_today, monthly_revenue, new_patients_this_month,
+        pending_claims, discharges_today, admissions_today, monthly_revenue, new_patients_this_month,
     })
 }
 
@@ -1059,15 +1060,23 @@ pub fn export_invoice_pdf(state: State<AppState>, invoice_id: i64) -> Result<Str
         quantity: r.get(4)?, unit_price: r.get(5)?, total: r.get(6)?,
     })).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
     
+    let h_name: String = conn.query_row("SELECT value FROM settings WHERE key = 'hospital_name'", [], |r| r.get(0)).unwrap_or_else(|_| "MediCore Hospital".to_string());
+    let h_addr: String = conn.query_row("SELECT value FROM settings WHERE key = 'hospital_address'", [], |r| r.get(0)).unwrap_or_else(|_| "".to_string());
+    let h_city: String = conn.query_row("SELECT value FROM settings WHERE key = 'hospital_city'", [], |r| r.get(0)).unwrap_or_else(|_| "".to_string());
+    let h_phone: String = conn.query_row("SELECT value FROM settings WHERE key = 'hospital_phone'", [], |r| r.get(0)).unwrap_or_else(|_| "".to_string());
+
     let (doc, page1, layer1) = PdfDocument::new(&format!("Invoice {}", invoice.invoice_code), Mm(210.0), Mm(297.0), "Layer 1");
     let font = doc.add_builtin_font(BuiltinFont::Helvetica).unwrap();
     let font_bold = doc.add_builtin_font(BuiltinFont::HelveticaBold).unwrap();
     let current_layer = doc.get_page(page1).get_layer(layer1);
     
-    current_layer.use_text("MediCore Hospital", 18.0, Mm(20.0), Mm(277.0), &font_bold);
+    current_layer.use_text(&h_name, 18.0, Mm(20.0), Mm(277.0), &font_bold);
     current_layer.use_text("INVOICE", 24.0, Mm(150.0), Mm(277.0), &font_bold);
     
-    current_layer.use_text(&format!("Invoice #: {}", invoice.invoice_code), 12.0, Mm(20.0), Mm(265.0), &font);
+    current_layer.use_text(&format!("{}, {}", h_addr, h_city), 9.0, Mm(20.0), Mm(271.0), &font);
+    current_layer.use_text(&format!("Phone: {}", h_phone), 9.0, Mm(20.0), Mm(266.0), &font);
+
+    current_layer.use_text(&format!("Invoice #: {}", invoice.invoice_code), 12.0, Mm(20.0), Mm(255.0), &font);
     current_layer.use_text(&format!("Date: {}", invoice.issue_date), 12.0, Mm(20.0), Mm(258.0), &font);
     current_layer.use_text(&format!("Due Date: {}", invoice.due_date), 12.0, Mm(20.0), Mm(251.0), &font);
     

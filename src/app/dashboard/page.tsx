@@ -1,7 +1,7 @@
 "use client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getDashboardStats, getRecentActivity, getAppointments, getLowStockItems, getDueRefillRx } from "@/lib/tauri";
-import { sendLowStockNotification } from "@/lib/notifications";
+import { sendLowStockNotification, sendAppointmentReminder } from "@/lib/notifications";
 import { AlertTriangle, TrendingUp, TrendingDown, RefreshCw, Clock } from "lucide-react";
 import { format } from "date-fns";
 import { useState, useEffect } from "react";
@@ -68,6 +68,31 @@ export default function DashboardPage() {
     }
   }, [lowStock]);
 
+  const [notifiedAppts, setNotifiedAppts] = useState<number[]>([]);
+
+  useEffect(() => {
+    const checkUpcoming = () => {
+      const now = new Date();
+      appts.forEach(a => {
+        if (a.status === "Scheduled" && !notifiedAppts.includes(a.id)) {
+          const [h, m] = a.appointment_time.split(":").map(Number);
+          const apptTime = new Date();
+          apptTime.setHours(h, m, 0, 0);
+
+          const diff = (apptTime.getTime() - now.getTime()) / (1000 * 60);
+          if (diff > 0 && diff <= 15) {
+            sendAppointmentReminder(a.patient_name || "Patient", a.appointment_time);
+            setNotifiedAppts(prev => [...prev, a.id]);
+          }
+        }
+      });
+    };
+
+    checkUpcoming();
+    const timer = setInterval(checkUpcoming, 30000);
+    return () => clearInterval(timer);
+  }, [appts, notifiedAppts]);
+
   const handleRefresh = async () => {
     setRefreshing(true);
     await qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
@@ -132,7 +157,8 @@ export default function DashboardPage() {
         <QuickStat icon="💊" val={s?.rx_due_refill ?? 0} label="Rx Due Refill" />
         <QuickStat icon="🛡" val={s?.pending_claims ?? 0} label="Claims Pending" />
         <QuickStat icon="⚠️" val={s?.low_stock_items ?? 0} label="Low Stock" />
-        <QuickStat icon="📋" val={s?.discharges_today ?? 0} label="Discharges Today" />
+        <QuickStat icon="📥" val={s?.admissions_today ?? 0} label="Admissions" />
+        <QuickStat icon="📤" val={s?.discharges_today ?? 0} label="Discharges" />
         <QuickStat icon="👤" val={s?.new_patients_this_month ?? 0} label="New This Month" />
       </div>
 

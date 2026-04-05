@@ -110,7 +110,7 @@ export interface DashboardStats {
   total_patients: number; today_appointments: number; beds_occupied: number;
   total_beds: number; today_revenue: number; pending_labs: number;
   rx_due_refill: number; low_stock_items: number; pending_claims: number;
-  discharges_today: number; monthly_revenue: number; new_patients_this_month: number;
+  discharges_today: number; admissions_today: number; monthly_revenue: number; new_patients_this_month: number;
 }
 
 export interface AuditLog {

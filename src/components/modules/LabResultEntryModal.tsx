@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { X } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { updateLabResult } from "@/lib/tauri";
+import { sendLabResultNotification } from "@/lib/notifications";
 import { toast } from "sonner";
 
 interface LabResultEntryProps {
@@ -63,6 +64,7 @@ export function LabResultEntryModal({ labTest, open, onClose }: LabResultEntryPr
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["lab-tests"] });
       toast.success("Lab result saved!");
+      sendLabResultNotification(labTest.patient_name || "Patient", labTest.test_name);
       onClose();
     },
     onError: () => toast.error("Failed to save result"),
