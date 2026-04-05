@@ -1,19 +1,23 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
-import { getPatientById, getPatientVitals, getAppointments, getPrescriptions, getLabTests, getInvoices } from "@/lib/tauri";
-import { ArrowLeft, Edit, Calendar, Pill, FlaskConical, FileText, Activity, User } from "lucide-react";
+import { getPatientById, getPatientVitals, getAppointments, getPrescriptions, getLabTests, getInvoices, getMedicalRecords, createMedicalRecord, getDoctors } from "@/lib/tauri";
+import { ArrowLeft, Edit, Calendar, Pill, FlaskConical, FileText, Activity, User, Plus, X, Download } from "lucide-react";
 import { useState } from "react";
 import { EditPatientModal } from "@/components/modules/EditPatientModal";
+import { toast } from "sonner";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-const TABS = ["Overview", "Appointments", "Prescriptions", "Lab Tests", "Invoices", "Vitals"] as const;
+const TABS = ["Overview", "Appointments", "Prescriptions", "Lab Tests", "Invoices", "Vitals", "Medical Records"] as const;
 type Tab = typeof TABS[number];
 
 export default function PatientDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const qc = useQueryClient();
   const [tab, setTab] = useState<Tab>("Overview");
   const [showEdit, setShowEdit] = useState(false);
+  const [showAddRecord, setShowAddRecord] = useState(false);
   const patientId = Number(params.id);
 
   const { data: patient, isLoading: loadingPatient } = useQuery({
@@ -44,6 +48,26 @@ export default function PatientDetailPage() {
   const { data: invoices = [] } = useQuery({
     queryKey: ["patient-invoices", patientId],
     queryFn: () => getInvoices(undefined, patientId),
+  });
+
+  const { data: medicalRecords = [] } = useQuery({
+    queryKey: ["patient-medical-records", patientId],
+    queryFn: () => getMedicalRecords(patientId),
+  });
+
+  const { data: doctors = [] } = useQuery({
+    queryKey: ["doctors"],
+    queryFn: () => getDoctors(),
+  });
+
+  const createRecordMut = useMutation({
+    mutationFn: createMedicalRecord,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["patient-medical-records", patientId] });
+      toast.success("Medical record added!");
+      setShowAddRecord(false);
+    },
+    onError: () => toast.error("Failed to add medical record"),
   });
 
   if (loadingPatient) {
@@ -243,7 +267,77 @@ export default function PatientDetailPage() {
             )}
           </div>
         )}
+
+        {tab === "Medical Records" && (
+          <div className="p-5">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-display font-bold text-sm text-white">EMR / EHR Records</h3>
+              <button onClick={() => setShowAddRecord(true)} className="btn btn-xs btn-primary"><Plus size={12} /> Add Record</button>
+            </div>
+            {medicalRecords.length === 0 ? (
+              <div className="text-center text-muted py-12 border-2 border-dashed border-border rounded-2xl">
+                <FileText size={32} className="mx-auto mb-3 opacity-20" />
+                <p>No medical records found for this patient.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-3">
+                {medicalRecords.map(record => (
+                  <div key={record.id} className="bg-surface2 border border-border rounded-xl p-4 flex justify-between items-start">
+                    <div className="flex gap-4">
+                      <div className="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center text-accent">
+                        <FileText size={20} />
+                      </div>
+                      <div>
+                        <div className="font-bold text-white text-sm">{record.title}</div>
+                        <div className="text-xs text-muted mt-0.5">{record.record_type} • Recorded by {record.doctor_name} on {record.created_at}</div>
+                        {record.description && <p className="text-xs text-subtle mt-2 leading-relaxed">{record.description}</p>}
+                      </div>
+                    </div>
+                    {record.attachment_path && (
+                      <button className="icon-btn hover:text-accent" title="Download Attachment">
+                        <Download size={16} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
+
+      {showAddRecord && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center anim-fade-in">
+          <div className="bg-surface border border-border2 rounded-2xl w-[450px] flex flex-col shadow-card">
+            <div className="px-6 py-4 border-b border-border flex items-center justify-between">
+              <h2 className="font-display font-bold text-base">Add Medical Record</h2>
+              <button onClick={() => setShowAddRecord(false)} className="text-subtle hover:text-white"><X size={18} /></button>
+            </div>
+            <form onSubmit={e => {
+              e.preventDefault();
+              const f = e.target as HTMLFormElement;
+              createRecordMut.mutate({
+                patient_id: patientId,
+                doctor_id: parseInt((f.elements.namedItem("doctor_id") as HTMLSelectElement).value),
+                record_type: (f.elements.namedItem("record_type") as HTMLSelectElement).value as any,
+                title: (f.elements.namedItem("title") as HTMLInputElement).value,
+                description: (f.elements.namedItem("description") as HTMLTextAreaElement).value || undefined,
+                attachment_path: (f.elements.namedItem("attachment_path") as HTMLInputElement).value || undefined,
+              });
+            }} className="p-6 space-y-4">
+              <div><label className="form-label">Doctor *</label><select name="doctor_id" required className="select"><option value="">Select Doctor</option>{doctors.map(d => <option key={d.id} value={d.id}>{d.full_name}</option>)}</select></div>
+              <div><label className="form-label">Record Type *</label><select name="record_type" required className="select"><option value="Clinical Note">Clinical Note</option><option value="Diagnostic Report">Diagnostic Report</option><option value="Prescription Archive">Prescription Archive</option><option value="Imaging">Imaging</option><option value="Other">Other</option></select></div>
+              <div><label className="form-label">Title *</label><input name="title" required className="input" placeholder="e.g., Post-op recovery note" /></div>
+              <div><label className="form-label">Description</label><textarea name="description" className="textarea" rows={3} /></div>
+              <div><label className="form-label">Attachment Path (Local)</label><input name="attachment_path" className="input" placeholder="e.g., C:/Records/report.pdf" /></div>
+              <div className="flex gap-3 justify-end pt-4">
+                <button type="button" onClick={() => setShowAddRecord(false)} className="btn btn-ghost">Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={createRecordMut.isPending}>Add Record</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {showEdit && patient && (
         <EditPatientModal

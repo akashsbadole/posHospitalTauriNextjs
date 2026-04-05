@@ -111,6 +111,7 @@ export interface DashboardStats {
   total_beds: number; today_revenue: number; pending_labs: number;
   rx_due_refill: number; low_stock_items: number; pending_claims: number;
   discharges_today: number; admissions_today: number; monthly_revenue: number; new_patients_this_month: number;
+  opd_patients_count: number; admitted_patients_count: number;
 }
 
 export interface AuditLog {
@@ -175,6 +176,29 @@ export interface MessageLog {
 }
 
 // Payroll & HR
+export interface PayrollMonth {
+  id: number;
+  month_year: string;
+  start_date: string;
+  end_date: string;
+  status: string;
+  created_at: string;
+}
+
+export interface PayrollEntry {
+  id: number;
+  payroll_month_id: number;
+  employee_id: number;
+  employee_name?: string;
+  basic_salary: number;
+  allowances: number;
+  deductions: number;
+  net_salary: number;
+  status: string;
+  processed_at?: string;
+  created_at: string;
+}
+
 export interface Employee {
   id: number; employee_code: string; staff_id?: number;
   first_name: string; last_name: string; full_name: string;
@@ -324,4 +348,29 @@ export interface Notification {
 export interface RolePermission {
   id: number; role: string; module: string;
   can_view: boolean; can_create: boolean; can_edit: boolean; can_delete: boolean;
+}
+
+// Medical Records (EMR)
+export interface MedicalRecord {
+  id: number;
+  patient_id: number;
+  doctor_id: number;
+  doctor_name?: string;
+  record_type: "Clinical Note" | "Diagnostic Report" | "Prescription Archive" | "Imaging" | "Other";
+  title: string;
+  description?: string;
+  attachment_path?: string;
+  created_at: string;
+}
+
+// Staff Shift Roster
+export interface StaffShift {
+  id: number;
+  employee_id: number;
+  employee_name?: string;
+  shift_date: string;
+  shift_type: "Morning" | "Evening" | "Night" | "On-Call" | "Holiday";
+  status: string;
+  notes?: string;
+  created_at: string;
 }

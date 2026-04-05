@@ -99,6 +99,7 @@ pub fn run() {
             // Inventory
             commands::get_inventory,
             commands::get_low_stock_items,
+            commands::get_expiring_inventory,
             commands::update_stock,
             commands::create_inventory_item,
             commands::update_inventory_item,
@@ -186,6 +187,12 @@ pub fn run() {
             // Role Permissions
             commands::get_role_permissions,
             commands::update_role_permission,
+            // Medical Records
+            commands::get_medical_records,
+            commands::create_medical_record,
+            // Staff Shifts
+            commands::get_staff_shifts,
+            commands::assign_staff_shift,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

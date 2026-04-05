@@ -835,4 +835,36 @@ CREATE TABLE IF NOT EXISTS role_permissions (
     can_delete      INTEGER NOT NULL DEFAULT 0,
     UNIQUE(role, module)
 );
+
+-- ─────────────────────────────────────────
+-- MEDICAL RECORDS (EMR)
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS medical_records (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    patient_id      INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+    doctor_id       INTEGER NOT NULL REFERENCES doctors(id),
+    record_type     TEXT NOT NULL CHECK(record_type IN ('Clinical Note', 'Diagnostic Report', 'Prescription Archive', 'Imaging', 'Other')),
+    title           TEXT NOT NULL,
+    description     TEXT,
+    attachment_path TEXT,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_medical_patient ON medical_records(patient_id);
+
+-- ─────────────────────────────────────────
+-- STAFF SHIFT ROSTER
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS staff_shifts (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    employee_id     INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+    shift_date      TEXT NOT NULL,
+    shift_type      TEXT NOT NULL CHECK(shift_type IN ('Morning', 'Evening', 'Night', 'On-Call', 'Holiday')),
+    status          TEXT NOT NULL DEFAULT 'Scheduled',
+    notes           TEXT,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(employee_id, shift_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_shift_date ON staff_shifts(shift_date);
 ";
