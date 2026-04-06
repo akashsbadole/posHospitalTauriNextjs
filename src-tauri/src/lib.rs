@@ -47,6 +47,7 @@ pub fn run() {
             commands::get_patient_vitals,
             commands::add_vital_signs,
             // Doctors
+            commands::get_next_available_doctor,
             commands::get_doctors,
             commands::get_doctor_by_id,
             commands::create_doctor,
@@ -68,6 +69,7 @@ pub fn run() {
             commands::get_prescriptions,
             commands::get_prescription_by_id,
             commands::create_prescription,
+            commands::issue_prescription,
             commands::cancel_prescription,
             commands::refill_prescription,
             commands::get_prescriptions_due_refill,
@@ -203,6 +205,12 @@ pub fn run() {
             // Patient Feedback
             commands::get_feedback,
             commands::create_feedback,
+            // Patient Visits
+            commands::get_patient_visits,
+            commands::get_visit_by_id,
+            commands::create_visit,
+            commands::update_visit_diagnosis,
+            commands::update_visit_status,
             // Data Export
             commands::export_patients_csv,
             commands::export_invoices_csv,

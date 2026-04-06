@@ -4,6 +4,7 @@ export type Department =
   | "Gynecology" | "Pediatrics" | "Radiology" | "ENT"
   | "Dermatology" | "Oncology" | "Psychiatry" | "Urology";
 export type PatientStatus = "Active" | "Admitted" | "Discharged" | "Critical" | "OPD";
+export type VisitStatus = "REGISTERED" | "WAITING" | "IN_CONSULTATION" | "TEST_PENDING" | "TEST_COMPLETED" | "BILL_PENDING" | "COMPLETED";
 export type AppointmentStatus = "Scheduled" | "Checked In" | "In Progress" | "Completed" | "Cancelled" | "No Show";
 export type AppointmentType =
   | "General Checkup" | "Follow-up" | "Consultation" | "Emergency"
@@ -37,14 +38,14 @@ export interface Appointment {
   id: number; appointment_code: string; patient_id: number; patient_name?: string;
   doctor_id: number; doctor_name?: string; department: Department;
   appointment_date: string; appointment_time: string; type: AppointmentType;
-  status: AppointmentStatus; notes?: string; follow_up_date?: string; created_at: string;
+  status: AppointmentStatus; notes?: string; follow_up_date?: string; visit_id?: number; created_at: string;
 }
 
 export interface Prescription {
   id: number; rx_code: string; patient_id: number; patient_name?: string;
   doctor_id: number; doctor_name?: string; issue_date: string; valid_until: string;
   status: "Active" | "Expired" | "Cancelled"; drugs: PrescriptionDrug[];
-  diagnosis?: string; notes?: string; created_at: string;
+  diagnosis?: string; notes?: string; visit_id?: number; created_at: string;
 }
 
 export interface PrescriptionDrug {
@@ -60,7 +61,7 @@ export interface LabTest {
   ordered_date: string; result_date?: string;
   status: "Ordered" | "Sample Collected" | "Processing" | "Ready" | "Reviewed";
   result_value?: string; result_unit?: string; reference_range?: string;
-  is_abnormal: boolean; notes?: string; report_path?: string;
+  is_abnormal: boolean; notes?: string; report_path?: string; visit_id?: number;
 }
 
 export interface Ward {
@@ -82,7 +83,7 @@ export interface Invoice {
   cgst: number; sgst: number; igst: number;
   total: number;
   paid_amount: number; balance: number; payment_method?: PaymentMethod;
-  insurance_claim_id?: number; notes?: string; created_at: string;
+  insurance_claim_id?: number; notes?: string; visit_id?: number; created_at: string;
 }
 
 export interface InvoiceItem {
@@ -131,7 +132,7 @@ export interface VitalSigns {
   id: number; patient_id: number; recorded_by: string; recorded_at: string;
   blood_pressure_sys: number; blood_pressure_dia: number; heart_rate: number;
   temperature: number; spo2: number; respiratory_rate: number;
-  weight_kg: number; height_cm: number; notes?: string;
+  weight_kg: number; height_cm: number; notes?: string; visit_id?: number;
 }
 
 export interface User {
@@ -250,7 +251,7 @@ export interface OpdToken {
   doctor_id: number; doctor_name?: string; department: string; queue_date: string;
   status: "Waiting" | "Called" | "InProgress" | "Completed" | "Cancelled";
   wait_time: number; called_at?: string; started_at?: string; completed_at?: string;
-  priority: number; created_at: string;
+  priority: number; visit_id?: number; created_at: string;
 }
 
 // Discharge Summary
@@ -361,7 +362,25 @@ export interface MedicalRecord {
   title: string;
   description?: string;
   attachment_path?: string;
+  visit_id?: number;
   created_at: string;
+}
+
+// Visits
+export interface Visit {
+  id: number;
+  visit_code: string;
+  patient_id: number;
+  patient_name?: string;
+  doctor_id: number;
+  doctor_name?: string;
+  department: string;
+  status: VisitStatus;
+  visit_type: "OPD" | "Emergency";
+  reason?: string;
+  diagnosis?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 // Staff Shift Roster

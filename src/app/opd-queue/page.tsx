@@ -1,14 +1,22 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getOpdTokens, createOpdToken, updateTokenStatus, getDoctors, getPatients } from "@/lib/tauri";
+import { getOpdTokens, createOpdToken, updateTokenStatus, getDoctors, getPatients, createVisit } from "@/lib/tauri";
+import { listen } from "@tauri-apps/api/event";
 import { toast } from "sonner";
-import { MonitorPlay, Plus, Play, CheckCircle, Phone, User } from "lucide-react";
+import { MonitorPlay, Plus, Play, CheckCircle, Phone, User, Activity } from "lucide-react";
 
 export default function OpdQueuePage() {
   const [showAddToken, setShowAddToken] = useState(false);
   const qc = useQueryClient();
   const today = new Date().toISOString().split("T")[0];
+
+  useEffect(() => {
+    const unlisten = listen("opd_queue_updated", () => {
+      qc.invalidateQueries({ queryKey: ["opd-tokens"] });
+    });
+    return () => { unlisten.then(f => f()); };
+  }, [qc]);
 
   const announce = (token: any) => {
     if (typeof window !== "undefined" && window.speechSynthesis) {
@@ -23,11 +31,32 @@ export default function OpdQueuePage() {
   const { data: doctors = [] } = useQuery({ queryKey: ["doctors"], queryFn: getDoctors });
   const { data: patients = [] } = useQuery({ queryKey: ["patients"], queryFn: () => getPatients() });
 
-  const createTokenMut = useMutation({ mutationFn: createOpdToken, onSuccess: () => { qc.invalidateQueries({ queryKey: ["opd-tokens"] }); toast.success("Token generated!"); setShowAddToken(false); }, onError: (err: Error) => toast.error(err.message || "Failed to generate token") });
+  const createTokenMut = useMutation({
+    mutationFn: async (data: any) => {
+      // First create a visit for this token
+      const visit = await createVisit({
+        patient_id: data.patient_id,
+        doctor_id: data.doctor_id,
+        department: data.department,
+        visit_type: data.visit_type,
+        status: "REGISTERED"
+      });
+      // Then create token linked to visit
+      return createOpdToken({ ...data, visit_id: visit.id });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["opd-tokens"] });
+      qc.invalidateQueries({ queryKey: ["patient-visits"] });
+      toast.success("Token generated!");
+      setShowAddToken(false);
+    },
+    onError: (err: Error) => toast.error(err.message || "Failed to generate token")
+  });
   const updateStatusMut = useMutation({
     mutationFn: ({ id, status }: { id: number; status: string }) => updateTokenStatus(id, status),
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["opd-tokens"] });
+      qc.invalidateQueries({ queryKey: ["patient-visits"] });
       toast.success("Status updated!");
       if (data.status === "Called") announce(data);
     },
@@ -131,12 +160,19 @@ export default function OpdQueuePage() {
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center">
           <div className="bg-surface border border-border2 rounded-2xl w-[450px] p-6 space-y-4">
             <h2 className="font-display font-bold text-lg">Generate OPD Token</h2>
-            <form onSubmit={e => { e.preventDefault(); const f = e.target as HTMLFormElement; createTokenMut.mutate({ patient_id: parseInt((f.elements.namedItem("patient_id") as HTMLSelectElement).value), doctor_id: parseInt((f.elements.namedItem("doctor_id") as HTMLSelectElement).value), department: (f.elements.namedItem("department") as HTMLInputElement).value, queue_date: today, priority: parseInt((f.elements.namedItem("priority") as HTMLSelectElement).value) }); }}>
+            <form onSubmit={e => { e.preventDefault(); const f = e.target as HTMLFormElement; createTokenMut.mutate({ patient_id: parseInt((f.elements.namedItem("patient_id") as HTMLSelectElement).value), doctor_id: parseInt((f.elements.namedItem("doctor_id") as HTMLSelectElement).value), department: (f.elements.namedItem("department") as HTMLInputElement).value, queue_date: today, priority: parseInt((f.elements.namedItem("priority") as HTMLSelectElement).value), visit_type: (f.elements.namedItem("visit_type") as HTMLSelectElement).value }); }}>
               <div className="space-y-4">
                 <div><label className="form-label">Patient *</label><select name="patient_id" required className="select"><option value="">Select Patient</option>{patients.map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}</select></div>
                 <div><label className="form-label">Doctor *</label><select name="doctor_id" required className="select"><option value="">Select Doctor</option>{doctors.map(d => <option key={d.id} value={d.id}>{d.full_name} - {d.specialization}</option>)}</select></div>
                 <div className="grid grid-cols-2 gap-4">
                   <div><label className="form-label">Department *</label><input name="department" required className="input" placeholder="e.g., General Medicine" /></div>
+                  <div>
+                    <label className="form-label">Visit Type</label>
+                    <select name="visit_type" className="select">
+                      <option value="OPD">OPD</option>
+                      <option value="Emergency">Emergency</option>
+                    </select>
+                  </div>
                   <div>
                     <label className="form-label">Priority</label>
                     <select name="priority" className="select">

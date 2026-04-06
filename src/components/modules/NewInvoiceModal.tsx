@@ -5,9 +5,9 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { createInvoice, getPatients } from "@/lib/tauri";
+import { createInvoice, getPatients, getPatientVisits } from "@/lib/tauri";
 import { toast } from "sonner";
-import type { Patient } from "@/types";
+import type { Patient, Visit } from "@/types";
 
 const schema = z.object({
   patient_id: z.number().min(1, "Patient is required"),
@@ -18,6 +18,7 @@ const schema = z.object({
   igst_rate: z.number().optional(),
   payment_method: z.string().optional(),
   notes: z.string().optional(),
+  visit_id: z.number().optional().nullable(),
 });
 
 type F = z.infer<typeof schema>;
@@ -41,6 +42,7 @@ const PAYMENT_METHODS = ["Cash", "Card", "UPI", "Insurance", "Net Banking", "Che
 export function NewInvoiceModal({ open, onClose }: Props) {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [patientSearch, setPatientSearch] = useState("");
+  const [patientVisits, setPatientVisits] = useState<Visit[]>([]);
   const [items, setItems] = useState<InvoiceItem[]>([]);
   const qc = useQueryClient();
 
@@ -63,6 +65,14 @@ export function NewInvoiceModal({ open, onClose }: Props) {
       getPatients().then(setPatients);
     }
   }, [open]);
+
+  useEffect(() => {
+    if (selectedPatientId) {
+      getPatientVisits(selectedPatientId).then(setPatientVisits);
+    } else {
+      setPatientVisits([]);
+    }
+  }, [selectedPatientId]);
 
   const filteredPatients = patients.filter(p => 
     p.full_name.toLowerCase().includes(patientSearch.toLowerCase()) ||
@@ -120,10 +130,12 @@ export function NewInvoiceModal({ open, onClose }: Props) {
         igst_rate: data.igst_rate || 0,
         payment_method: data.payment_method,
         notes: data.notes,
+        visit_id: data.visit_id || undefined,
       } as any, itemsData as any);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["invoices"] });
+      qc.invalidateQueries({ queryKey: ["patient-visits"] });
       toast.success("Invoice created!");
       onClose();
       reset();
@@ -181,6 +193,16 @@ export function NewInvoiceModal({ open, onClose }: Props) {
                 <label className="form-label">Payment Method</label>
                 <select {...register("payment_method")} className="w-full">
                   {PAYMENT_METHODS.map(m => <option key={m}>{m}</option>)}
+                </select>
+              </div>
+
+              <div className="col-span-2">
+                <label className="form-label">Link to Visit</label>
+                <select {...register("visit_id", { valueAsNumber: true })} className="w-full">
+                  <option value="">No link / New Visit</option>
+                  {patientVisits.filter(v => v.status !== "COMPLETED").map(v => (
+                    <option key={v.id} value={v.id}>{v.visit_code} - {v.status} ({v.doctor_name})</option>
+                  ))}
                 </select>
               </div>
             </div>

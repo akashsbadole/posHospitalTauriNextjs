@@ -151,6 +151,7 @@ pub struct CreateAppointment {
     pub follow_up_date: Option<String>,
     pub is_video_consultation: Option<bool>,
     pub video_link: Option<String>,
+    pub visit_id: Option<i64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -192,6 +193,7 @@ pub struct CreatePrescription {
     pub status: Option<String>,
     pub diagnosis: Option<String>,
     pub notes: Option<String>,
+    pub visit_id: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -235,6 +237,7 @@ pub struct CreateLabTest {
     pub ordered_date: String,
     pub status: Option<String>,
     pub notes: Option<String>,
+    pub visit_id: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -317,6 +320,7 @@ pub struct CreateInvoice {
     pub igst_rate: Option<f64>,
     pub payment_method: Option<String>,
     pub notes: Option<String>,
+    pub visit_id: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -899,6 +903,7 @@ pub struct CreateOpdToken {
     pub department: String,
     pub queue_date: String,
     pub priority: Option<i64>,
+    pub visit_id: Option<i64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -1305,6 +1310,7 @@ pub struct CreateMedicalRecord {
     pub title: String,
     pub description: Option<String>,
     pub attachment_path: Option<String>,
+    pub visit_id: Option<i64>,
 }
 
 // ─────────────────────────────────────────
@@ -1361,4 +1367,34 @@ pub struct CreateFeedback {
     pub rating: i64,
     pub comments: String,
     pub department: Option<String>,
+}
+
+// ─── PATIENT VISITS ───────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Visit {
+    pub id: i64,
+    pub visit_code: String,
+    pub patient_id: i64,
+    pub patient_name: Option<String>,
+    pub doctor_id: i64,
+    pub doctor_name: Option<String>,
+    pub department: String,
+    pub status: String,
+    pub visit_type: String,
+    pub reason: Option<String>,
+    pub diagnosis: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateVisit {
+    pub patient_id: i64,
+    pub doctor_id: i64,
+    pub department: String,
+    pub visit_type: Option<String>,
+    pub reason: Option<String>,
+    pub diagnosis: Option<String>,
+    pub status: Option<String>,
 }

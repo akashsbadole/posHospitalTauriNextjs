@@ -50,6 +50,16 @@ fn run_gst_migrations(conn: &rusqlite::Connection) -> Result<()> {
             conn.execute(&sql, [])?;
         }
     }
+
+    // Add visit_type and diagnosis to visits table
+    if !column_exists(conn, "visits", "visit_type")? {
+        eprintln!("[MIGRATION] Adding visit_type column to visits table");
+        conn.execute("ALTER TABLE visits ADD COLUMN visit_type TEXT DEFAULT 'OPD'", [])?;
+    }
+    if !column_exists(conn, "visits", "diagnosis")? {
+        eprintln!("[MIGRATION] Adding diagnosis column to visits table");
+        conn.execute("ALTER TABLE visits ADD COLUMN diagnosis TEXT", [])?;
+    }
     
     // Add photo_path column to patients table if it doesn't exist
     if !column_exists(conn, "patients", "photo_path")? {
@@ -61,6 +71,25 @@ fn run_gst_migrations(conn: &rusqlite::Connection) -> Result<()> {
     if !column_exists(conn, "opd_tokens", "priority")? {
         eprintln!("[MIGRATION] Adding priority column to opd_tokens table");
         conn.execute("ALTER TABLE opd_tokens ADD COLUMN priority INTEGER NOT NULL DEFAULT 0", [])?;
+    }
+
+    // Add visit_id to various tables
+    let tables_needing_visit_id = [
+        "opd_tokens", "appointments", "prescriptions", "lab_tests",
+        "invoices", "medical_records", "vital_signs"
+    ];
+    for table in tables_needing_visit_id {
+        if !column_exists(conn, table, "visit_id")? {
+            eprintln!("[MIGRATION] Adding visit_id column to {} table", table);
+            let sql = format!("ALTER TABLE {} ADD COLUMN visit_id INTEGER", table);
+            conn.execute(&sql, [])?;
+        }
+    }
+
+    // Add is_deleted to patients table for soft delete
+    if !column_exists(conn, "patients", "is_deleted")? {
+        eprintln!("[MIGRATION] Adding is_deleted column to patients table");
+        conn.execute("ALTER TABLE patients ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0", [])?;
     }
     
     Ok(())
@@ -146,6 +175,7 @@ CREATE TABLE IF NOT EXISTS patients (
     insurance_provider  TEXT,
     insurance_number    TEXT,
     photo_path          TEXT,
+    is_deleted          INTEGER NOT NULL DEFAULT 0,
     created_at          TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -188,6 +218,7 @@ CREATE TABLE IF NOT EXISTS appointments (
     follow_up_date      TEXT,
     is_video_consultation INTEGER NOT NULL DEFAULT 0,
     video_link          TEXT,
+    visit_id            INTEGER,
     created_at          TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -208,6 +239,7 @@ CREATE TABLE IF NOT EXISTS prescriptions (
     status      TEXT NOT NULL DEFAULT 'Active',
     diagnosis   TEXT,
     notes       TEXT,
+    visit_id    INTEGER,
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -241,7 +273,8 @@ CREATE TABLE IF NOT EXISTS lab_tests (
     reference_range TEXT,
     is_abnormal     INTEGER NOT NULL DEFAULT 0,
     notes           TEXT,
-    report_path     TEXT
+    report_path     TEXT,
+    visit_id        INTEGER
 );
 
 CREATE INDEX IF NOT EXISTS idx_lab_status  ON lab_tests(status);
@@ -290,6 +323,7 @@ CREATE TABLE IF NOT EXISTS invoices (
     payment_method      TEXT,
     insurance_claim_id  INTEGER,
     notes               TEXT,
+    visit_id            INTEGER,
     created_at          TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -356,7 +390,8 @@ CREATE TABLE IF NOT EXISTS vital_signs (
     respiratory_rate    INTEGER,
     weight_kg           REAL,
     height_cm           REAL,
-    notes               TEXT
+    notes               TEXT,
+    visit_id            INTEGER
 );
 
 -- ─────────────────────────────────────────
@@ -639,6 +674,7 @@ CREATE TABLE IF NOT EXISTS opd_tokens (
     started_at      TEXT,
     completed_at    TEXT,
     priority        INTEGER NOT NULL DEFAULT 0,
+    visit_id        INTEGER,
     created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -876,6 +912,7 @@ CREATE TABLE IF NOT EXISTS medical_records (
     title           TEXT NOT NULL,
     description     TEXT,
     attachment_path TEXT,
+    visit_id        INTEGER,
     created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -908,4 +945,24 @@ CREATE TABLE IF NOT EXISTS feedback (
     department      TEXT,
     created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- ─────────────────────────────────────────
+-- PATIENT VISITS
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS visits (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    visit_code      TEXT NOT NULL UNIQUE,
+    patient_id      INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+    doctor_id       INTEGER NOT NULL REFERENCES doctors(id),
+    department      TEXT NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'REGISTERED',
+    visit_type      TEXT NOT NULL DEFAULT 'OPD',
+    reason          TEXT,
+    diagnosis       TEXT,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_visits_patient ON visits(patient_id);
+CREATE INDEX IF NOT EXISTS idx_visits_status  ON visits(status);
 ";

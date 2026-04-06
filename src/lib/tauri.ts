@@ -9,6 +9,7 @@ import type {
   OpdToken, DischargeSummary, DischargeMedication,
   OtSchedule, OtTheatre, EmergencyCase, BloodDonor, BloodInventory, BloodRequest,
   Ambulance, AmbulanceCall, ExpenseCategory, Expense, Notification, RolePermission,
+  Visit, VisitStatus,
 } from "@/types";
 
 const cmd = <T>(command: string, args?: Record<string, unknown>) =>
@@ -30,6 +31,7 @@ export const getPatientVitals        = (patient_id: number) => cmd<VitalSigns[]>
 export const addVitalSigns           = (data: Omit<VitalSigns,"id">) => cmd<VitalSigns>("add_vital_signs", { data });
 
 // Doctors
+export const getNextAvailableDoctor  = (department: string) => cmd<Doctor>("get_next_available_doctor", { department });
 export const getDoctors              = ()               => cmd<Doctor[]>("get_doctors");
 export const getDoctorById           = (id: number)     => cmd<Doctor>("get_doctor_by_id", { id });
 export const createDoctor            = (data: Omit<Doctor,"id"|"staff_code"|"created_at">) => cmd<Doctor>("create_doctor", { data });
@@ -57,6 +59,7 @@ export const createPrescription      = (
   data: Omit<Prescription,"id"|"rx_code"|"created_at"|"patient_name"|"doctor_name"|"drugs">,
   drugs: Omit<PrescriptionDrug,"id"|"prescription_id">[]
 ) => cmd<Prescription>("create_prescription", { data, drugs });
+export const issuePrescription = (id: number) => invoke<void>("issue_prescription", { id });
 export const cancelPrescription      = (id: number)     => cmd<void>("cancel_prescription", { id });
 export const refillPrescription      = (id: number, drug_id: number) => cmd<void>("refill_prescription", { id, drug_id });
 export const getDueRefillRx          = ()               => cmd<Prescription[]>("get_prescriptions_due_refill");
@@ -223,6 +226,13 @@ export const assignStaffShift = (data: { employee_id: number; shift_date: string
 // Patient Feedback
 export const getFeedback = () => cmd<PatientFeedback[]>("get_feedback");
 export const createFeedback = (data: { patient_id?: number; rating: number; comments: string; department?: string }) => cmd<PatientFeedback>("create_feedback", { data });
+
+// Visits
+export const getPatientVisits = (patient_id: number) => cmd<Visit[]>("get_patient_visits", { patient_id });
+export const getVisitById = (id: number) => cmd<Visit>("get_visit_by_id", { id });
+export const createVisit = (data: { patient_id: number; doctor_id: number; department: string; visit_type?: string; reason?: string; diagnosis?: string; status?: string }) => cmd<Visit>("create_visit", { data });
+export const updateVisitDiagnosis = (id: number, diagnosis: string) => cmd<void>("update_visit_diagnosis", { id, diagnosis });
+export const updateVisitStatus = (id: number, status: VisitStatus) => cmd<void>("update_visit_status", { id, status });
 
 // Data Export
 export const exportPatientsCsv = () => cmd<string>("export_patients_csv");

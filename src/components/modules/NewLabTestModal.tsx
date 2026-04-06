@@ -5,9 +5,9 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { createLabTest, getPatients, getDoctors } from "@/lib/tauri";
+import { createLabTest, getPatients, getDoctors, getPatientVisits } from "@/lib/tauri";
 import { toast } from "sonner";
-import type { Patient, Doctor } from "@/types";
+import type { Patient, Doctor, Visit } from "@/types";
 
 const schema = z.object({
   patient_id: z.number().min(1, "Patient is required"),
@@ -15,6 +15,7 @@ const schema = z.object({
   test_name: z.string().min(1, "Test name is required"),
   test_category: z.string().min(1, "Category is required"),
   notes: z.string().optional(),
+  visit_id: z.number().optional().nullable(),
 });
 
 type F = z.infer<typeof schema>;
@@ -37,6 +38,7 @@ export function NewLabTestModal({ open, onClose }: Props) {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [patientSearch, setPatientSearch] = useState("");
+  const [patientVisits, setPatientVisits] = useState<Visit[]>([]);
   const qc = useQueryClient();
 
   const { register, handleSubmit, formState: { errors }, reset, setValue, watch } = useForm<F>({
@@ -56,6 +58,14 @@ export function NewLabTestModal({ open, onClose }: Props) {
     }
   }, [open]);
 
+  useEffect(() => {
+    if (selectedPatientId) {
+      getPatientVisits(selectedPatientId).then(setPatientVisits);
+    } else {
+      setPatientVisits([]);
+    }
+  }, [selectedPatientId]);
+
   const filteredPatients = patients.filter(p => 
     p.full_name.toLowerCase().includes(patientSearch.toLowerCase()) ||
     p.patient_code.toLowerCase().includes(patientSearch.toLowerCase())
@@ -66,11 +76,13 @@ export function NewLabTestModal({ open, onClose }: Props) {
   const createMut = useMutation({
     mutationFn: (data: F) => createLabTest({
       ...data,
+      visit_id: data.visit_id || undefined,
       ordered_date: new Date().toISOString().split("T")[0],
       status: "Ordered",
     } as any),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["lab-tests"] });
+      qc.invalidateQueries({ queryKey: ["patient-visits"] });
       toast.success("Lab test ordered!");
       onClose();
       reset();
@@ -150,6 +162,16 @@ export function NewLabTestModal({ open, onClose }: Props) {
             <div>
               <label className="form-label">Notes</label>
               <textarea {...register("notes")} rows={2} className="w-full" placeholder="Clinical notes..." />
+            </div>
+
+            <div>
+              <label className="form-label">Link to Visit</label>
+              <select {...register("visit_id", { valueAsNumber: true })} className="w-full">
+                <option value="">No link / New Visit</option>
+                {patientVisits.filter(v => v.status !== "COMPLETED").map(v => (
+                  <option key={v.id} value={v.id}>{v.visit_code} - {v.status} ({v.doctor_name})</option>
+                ))}
+              </select>
             </div>
           </div>
         </form>

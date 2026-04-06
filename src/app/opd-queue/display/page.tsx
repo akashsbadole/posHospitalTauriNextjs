@@ -1,23 +1,32 @@
 "use client";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getOpdTokens } from "@/lib/tauri";
+import { listen } from "@tauri-apps/api/event";
 import { useEffect, useState } from "react";
 import { Monitor, Clock, Volume2 } from "lucide-react";
 
 export default function QueueDisplayPage() {
   const today = new Date().toISOString().split("T")[0];
   const [time, setTime] = useState(new Date().toLocaleTimeString());
+  const qc = useQueryClient();
 
   const { data: tokens = [] } = useQuery({
     queryKey: ["opd-tokens", today],
     queryFn: () => getOpdTokens(today),
-    refetchInterval: 5000,
+    refetchInterval: 10000, // Reduced polling as we use events
   });
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date().toLocaleTimeString()), 1000);
-    return () => clearInterval(timer);
-  }, []);
+    const unlisten = listen("opd_queue_updated", () => {
+      qc.invalidateQueries({ queryKey: ["opd-tokens"] });
+    });
+
+    return () => {
+      clearInterval(timer);
+      unlisten.then(f => f());
+    };
+  }, [qc]);
 
   const currentlyServing = tokens.filter(t => t.status === "InProgress");
   const recentlyCalled = tokens.filter(t => t.status === "Called").slice(0, 3);
