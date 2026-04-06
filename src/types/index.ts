@@ -376,7 +376,9 @@ export interface Visit {
   doctor_name?: string;
   department: string;
   status: VisitStatus;
+  visit_type: "OPD" | "Emergency";
   reason?: string;
+  diagnosis?: string;
   created_at: string;
   updated_at: string;
 }

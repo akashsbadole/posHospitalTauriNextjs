@@ -1381,7 +1381,9 @@ pub struct Visit {
     pub doctor_name: Option<String>,
     pub department: String,
     pub status: String,
+    pub visit_type: String,
     pub reason: Option<String>,
+    pub diagnosis: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -1391,6 +1393,8 @@ pub struct CreateVisit {
     pub patient_id: i64,
     pub doctor_id: i64,
     pub department: String,
+    pub visit_type: Option<String>,
     pub reason: Option<String>,
+    pub diagnosis: Option<String>,
     pub status: Option<String>,
 }

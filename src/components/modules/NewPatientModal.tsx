@@ -27,6 +27,7 @@ const schema = z.object({
   insurance_number: z.string().optional(),
   status: z.enum(["Active","OPD"]).default("OPD"),
   start_visit: z.boolean().default(false),
+  visit_type: z.enum(["OPD","Emergency"]).default("OPD"),
   visit_reason: z.string().optional(),
 });
 type F = z.infer<typeof schema>;
@@ -80,6 +81,7 @@ export function NewPatientModal({ open, onClose }: { open: boolean; onClose: () 
           doctor_id: d.assigned_doctor_id,
           department: d.department,
           reason: d.visit_reason,
+          visit_type: d.visit_type,
           status: "REGISTERED"
         });
 
@@ -88,7 +90,8 @@ export function NewPatientModal({ open, onClose }: { open: boolean; onClose: () 
           doctor_id: d.assigned_doctor_id,
           department: d.department,
           queue_date: new Date().toISOString().split("T")[0],
-          visit_id: visit.id
+          visit_id: visit.id,
+          priority: d.visit_type === "Emergency" ? 2 : 0
         });
 
         return { patient, visitStarted: true };
@@ -157,12 +160,21 @@ export function NewPatientModal({ open, onClose }: { open: boolean; onClose: () 
             <div className="col-span-2 border-t border-border pt-4 mt-2">
               <div className="flex items-center gap-2 mb-3">
                 <input type="checkbox" {...register("start_visit")} id="start_visit" className="w-4 h-4 rounded border-border" />
-                <label htmlFor="start_visit" className="text-sm font-medium text-white cursor-pointer">Start Visit immediately (OPD)</label>
+                <label htmlFor="start_visit" className="text-sm font-medium text-white cursor-pointer">Start Visit immediately</label>
               </div>
               {watch("start_visit") && (
-                <div className="anim-fade-in">
-                  <label className="form-label">Reason for Visit / Chief Complaint</label>
-                  <input {...register("visit_reason")} placeholder="e.g. Regular checkup, persistent cough" />
+                <div className="grid grid-cols-2 gap-4 anim-fade-in">
+                  <div>
+                    <label className="form-label">Visit Type</label>
+                    <select {...register("visit_type")}>
+                      <option value="OPD">OPD</option>
+                      <option value="Emergency">Emergency</option>
+                    </select>
+                  </div>
+                  <div className="col-span-2">
+                    <label className="form-label">Reason for Visit / Chief Complaint</label>
+                    <input {...register("visit_reason")} placeholder="e.g. Regular checkup, persistent cough" />
+                  </div>
                 </div>
               )}
             </div>

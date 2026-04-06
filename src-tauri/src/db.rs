@@ -50,6 +50,16 @@ fn run_gst_migrations(conn: &rusqlite::Connection) -> Result<()> {
             conn.execute(&sql, [])?;
         }
     }
+
+    // Add visit_type and diagnosis to visits table
+    if !column_exists(conn, "visits", "visit_type")? {
+        eprintln!("[MIGRATION] Adding visit_type column to visits table");
+        conn.execute("ALTER TABLE visits ADD COLUMN visit_type TEXT DEFAULT 'OPD'", [])?;
+    }
+    if !column_exists(conn, "visits", "diagnosis")? {
+        eprintln!("[MIGRATION] Adding diagnosis column to visits table");
+        conn.execute("ALTER TABLE visits ADD COLUMN diagnosis TEXT", [])?;
+    }
     
     // Add photo_path column to patients table if it doesn't exist
     if !column_exists(conn, "patients", "photo_path")? {
@@ -74,6 +84,12 @@ fn run_gst_migrations(conn: &rusqlite::Connection) -> Result<()> {
             let sql = format!("ALTER TABLE {} ADD COLUMN visit_id INTEGER", table);
             conn.execute(&sql, [])?;
         }
+    }
+
+    // Add is_deleted to patients table for soft delete
+    if !column_exists(conn, "patients", "is_deleted")? {
+        eprintln!("[MIGRATION] Adding is_deleted column to patients table");
+        conn.execute("ALTER TABLE patients ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0", [])?;
     }
     
     Ok(())
@@ -159,6 +175,7 @@ CREATE TABLE IF NOT EXISTS patients (
     insurance_provider  TEXT,
     insurance_number    TEXT,
     photo_path          TEXT,
+    is_deleted          INTEGER NOT NULL DEFAULT 0,
     created_at          TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -939,7 +956,9 @@ CREATE TABLE IF NOT EXISTS visits (
     doctor_id       INTEGER NOT NULL REFERENCES doctors(id),
     department      TEXT NOT NULL,
     status          TEXT NOT NULL DEFAULT 'REGISTERED',
+    visit_type      TEXT NOT NULL DEFAULT 'OPD',
     reason          TEXT,
+    diagnosis       TEXT,
     created_at      TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
