@@ -1,9 +1,9 @@
 "use client";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getOpdTokens, createOpdToken, updateTokenStatus, getDoctors, getPatients } from "@/lib/tauri";
+import { getOpdTokens, createOpdToken, updateTokenStatus, getDoctors, getPatients, createVisit } from "@/lib/tauri";
 import { toast } from "sonner";
-import { MonitorPlay, Plus, Play, CheckCircle, Phone, User } from "lucide-react";
+import { MonitorPlay, Plus, Play, CheckCircle, Phone, User, Activity } from "lucide-react";
 
 export default function OpdQueuePage() {
   const [showAddToken, setShowAddToken] = useState(false);
@@ -23,11 +23,31 @@ export default function OpdQueuePage() {
   const { data: doctors = [] } = useQuery({ queryKey: ["doctors"], queryFn: getDoctors });
   const { data: patients = [] } = useQuery({ queryKey: ["patients"], queryFn: () => getPatients() });
 
-  const createTokenMut = useMutation({ mutationFn: createOpdToken, onSuccess: () => { qc.invalidateQueries({ queryKey: ["opd-tokens"] }); toast.success("Token generated!"); setShowAddToken(false); }, onError: (err: Error) => toast.error(err.message || "Failed to generate token") });
+  const createTokenMut = useMutation({
+    mutationFn: async (data: any) => {
+      // First create a visit for this token
+      const visit = await createVisit({
+        patient_id: data.patient_id,
+        doctor_id: data.doctor_id,
+        department: data.department,
+        status: "REGISTERED"
+      });
+      // Then create token linked to visit
+      return createOpdToken({ ...data, visit_id: visit.id });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["opd-tokens"] });
+      qc.invalidateQueries({ queryKey: ["patient-visits"] });
+      toast.success("Token generated!");
+      setShowAddToken(false);
+    },
+    onError: (err: Error) => toast.error(err.message || "Failed to generate token")
+  });
   const updateStatusMut = useMutation({
     mutationFn: ({ id, status }: { id: number; status: string }) => updateTokenStatus(id, status),
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["opd-tokens"] });
+      qc.invalidateQueries({ queryKey: ["patient-visits"] });
       toast.success("Status updated!");
       if (data.status === "Called") announce(data);
     },

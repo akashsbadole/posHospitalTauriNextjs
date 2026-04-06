@@ -1,14 +1,14 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
-import { getPatientById, getPatientVitals, getAppointments, getPrescriptions, getLabTests, getInvoices, getMedicalRecords, createMedicalRecord, getDoctors } from "@/lib/tauri";
-import { ArrowLeft, Edit, Calendar, Pill, FlaskConical, FileText, Activity, User, Plus, X, Download } from "lucide-react";
+import { getPatientById, getPatientVitals, getAppointments, getPrescriptions, getLabTests, getInvoices, getMedicalRecords, createMedicalRecord, getDoctors, getPatientVisits, createVisit, createOpdToken } from "@/lib/tauri";
+import { ArrowLeft, Edit, Calendar, Pill, FlaskConical, FileText, Activity, User, Plus, X, Download, Clock } from "lucide-react";
 import { useState } from "react";
 import { EditPatientModal } from "@/components/modules/EditPatientModal";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-const TABS = ["Overview", "Appointments", "Prescriptions", "Lab Tests", "Invoices", "Vitals", "Medical Records"] as const;
+const TABS = ["Overview", "Visits", "Appointments", "Prescriptions", "Lab Tests", "Invoices", "Vitals", "Medical Records"] as const;
 type Tab = typeof TABS[number];
 
 export default function PatientDetailPage() {
@@ -55,19 +55,52 @@ export default function PatientDetailPage() {
     queryFn: () => getMedicalRecords(patientId),
   });
 
+  const { data: visits = [] } = useQuery({
+    queryKey: ["patient-visits", patientId],
+    queryFn: () => getPatientVisits(patientId),
+  });
+
+  const activeVisit = visits.find(v => v.status !== "COMPLETED");
+
   const { data: doctors = [] } = useQuery({
     queryKey: ["doctors"],
     queryFn: () => getDoctors(),
   });
 
   const createRecordMut = useMutation({
-    mutationFn: createMedicalRecord,
+    mutationFn: (data: any) => createMedicalRecord({ ...data, visit_id: activeVisit?.id }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["patient-medical-records", patientId] });
       toast.success("Medical record added!");
       setShowAddRecord(false);
     },
     onError: () => toast.error("Failed to add medical record"),
+  });
+
+  const startVisitMut = useMutation({
+    mutationFn: async (data: { doctor_id: number; reason: string }) => {
+      const visit = await createVisit({
+        patient_id: patientId,
+        doctor_id: data.doctor_id,
+        department: doctors.find(d => d.id === data.doctor_id)?.specialization || "General Medicine",
+        reason: data.reason,
+        status: "REGISTERED"
+      });
+      await createOpdToken({
+        patient_id: patientId,
+        doctor_id: data.doctor_id,
+        department: visit.department,
+        queue_date: new Date().toISOString().split("T")[0],
+        visit_id: visit.id
+      });
+      return visit;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["patient-visits", patientId] });
+      qc.invalidateQueries({ queryKey: ["opd-tokens"] });
+      toast.success("Visit started and token generated!");
+    },
+    onError: (err: Error) => toast.error(err.message || "Failed to start visit")
   });
 
   if (loadingPatient) {
@@ -86,6 +119,25 @@ export default function PatientDetailPage() {
         <ArrowLeft size={16} /> Back to Patients
       </button>
 
+      {activeVisit && (
+        <div className="bg-accent/10 border border-accent/20 rounded-2xl p-4 mb-5 flex items-center justify-between anim-fade-up">
+          <div className="flex items-center gap-4">
+            <div className="w-10 h-10 rounded-full bg-accent flex items-center justify-center text-bg">
+              <Activity size={20} />
+            </div>
+            <div>
+              <div className="text-[11px] font-bold text-accent uppercase tracking-wider">Active Visit - {activeVisit.status}</div>
+              <div className="text-sm text-white font-medium">{activeVisit.reason || "General Consultation"} with {activeVisit.doctor_name}</div>
+            </div>
+          </div>
+          <div className="flex gap-2">
+             {/* Future actions: Order Lab, Prescribe, Bill */}
+             <button onClick={() => setTab("Medical Records")} className="btn btn-xs btn-ghost text-accent border-accent/20">Add Clinical Note</button>
+             <button onClick={() => setTab("Lab Tests")} className="btn btn-xs btn-ghost text-accent border-accent/20">Order Test</button>
+          </div>
+        </div>
+      )}
+
       <div className="card mb-5">
         <div className="p-5 flex items-start justify-between">
           <div className="flex gap-4">
@@ -102,7 +154,20 @@ export default function PatientDetailPage() {
               </div>
             </div>
           </div>
-          <button onClick={() => setShowEdit(true)} className="btn btn-primary"><Edit size={14} /> Edit Patient</button>
+          <div className="flex gap-2">
+            {!activeVisit && (
+               <button onClick={() => {
+                 const docId = patient.assigned_doctor_id || (doctors[0]?.id);
+                 if (docId) {
+                   const reason = prompt("Enter reason for visit:");
+                   if (reason !== null) startVisitMut.mutate({ doctor_id: docId, reason });
+                 } else {
+                   toast.error("Please assign a doctor first or select one from the doctors list.");
+                 }
+               }} className="btn btn-accent"><Clock size={14} /> Start Visit</button>
+            )}
+            <button onClick={() => setShowEdit(true)} className="btn btn-primary"><Edit size={14} /> Edit Patient</button>
+          </div>
         </div>
 
         <div className="border-t border-border px-5 py-4 grid grid-cols-4 gap-4">
@@ -149,6 +214,29 @@ export default function PatientDetailPage() {
                 <div><span className="text-subtle">Policy Number:</span> <span className="text-white ml-2">{patient.insurance_number || "—"}</span></div>
               </div>
             </div>
+          </div>
+        )}
+
+        {tab === "Visits" && (
+          <div className="p-5">
+            {visits.length === 0 ? (
+              <div className="text-center text-muted py-8">No visit history found</div>
+            ) : (
+              <table className="data-table">
+                <thead><tr><th>Code</th><th>Date</th><th>Doctor</th><th>Reason</th><th>Status</th></tr></thead>
+                <tbody>
+                  {visits.map(v => (
+                    <tr key={v.id}>
+                      <td className="font-mono text-accent">{v.visit_code}</td>
+                      <td className="text-white">{v.created_at}</td>
+                      <td className="text-white">{v.doctor_name}</td>
+                      <td className="text-muted">{v.reason || "—"}</td>
+                      <td><span className={`badge ${v.status === "COMPLETED" ? "badge-green" : "badge-blue"}`}>{v.status}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         )}
 

@@ -5,9 +5,9 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { createPrescription, getPatients, getDoctors, getInventory } from "@/lib/tauri";
+import { createPrescription, getPatients, getDoctors, getInventory, getPatientVisits } from "@/lib/tauri";
 import { toast } from "sonner";
-import type { Patient, Doctor, InventoryItem } from "@/types";
+import type { Patient, Doctor, InventoryItem, Visit } from "@/types";
 
 const schema = z.object({
   patient_id: z.number().min(1, "Patient is required"),
@@ -15,6 +15,7 @@ const schema = z.object({
   diagnosis: z.string().optional(),
   valid_until: z.string().min(1, "Valid until date is required"),
   notes: z.string().optional(),
+  visit_id: z.number().optional().nullable(),
 });
 
 type F = z.infer<typeof schema>;
@@ -46,6 +47,7 @@ export function NewPrescriptionModal({ open, onClose }: Props) {
   const [drugSearch, setDrugSearch] = useState("");
   const [drugDropdownId, setDrugDropdownId] = useState<string | null>(null);
   const [drugs, setDrugs] = useState<DrugEntry[]>([]);
+  const [patientVisits, setPatientVisits] = useState<Visit[]>([]);
   const qc = useQueryClient();
 
   const { register, handleSubmit, formState: { errors }, reset, setValue, watch } = useForm<F>({
@@ -64,6 +66,14 @@ export function NewPrescriptionModal({ open, onClose }: Props) {
       getInventory().then(setInventory);
     }
   }, [open]);
+
+  useEffect(() => {
+    if (selectedPatientId) {
+      getPatientVisits(selectedPatientId).then(setPatientVisits);
+    } else {
+      setPatientVisits([]);
+    }
+  }, [selectedPatientId]);
 
   const filteredPatients = patients.filter(p => 
     p.full_name.toLowerCase().includes(patientSearch.toLowerCase()) ||
@@ -113,10 +123,16 @@ export function NewPrescriptionModal({ open, onClose }: Props) {
         refills_remaining: d.refills_remaining,
       }));
       
-      return createPrescription({ ...data, issue_date: new Date().toISOString().split("T")[0], status: "Active" } as any, drugsData as any);
+      return createPrescription({
+        ...data,
+        visit_id: data.visit_id || undefined,
+        issue_date: new Date().toISOString().split("T")[0],
+        status: "Active"
+      } as any, drugsData as any);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["prescriptions"] });
+      qc.invalidateQueries({ queryKey: ["patient-visits"] });
       toast.success("Prescription created!");
       onClose();
       reset();
@@ -186,6 +202,16 @@ export function NewPrescriptionModal({ open, onClose }: Props) {
             <div>
               <label className="form-label">Diagnosis</label>
               <input {...register("diagnosis")} placeholder="Primary diagnosis" className="w-full" />
+            </div>
+
+            <div>
+              <label className="form-label">Link to Visit</label>
+              <select {...register("visit_id", { valueAsNumber: true })} className="w-full">
+                <option value="">No link / New Visit</option>
+                {patientVisits.filter(v => v.status !== "COMPLETED").map(v => (
+                  <option key={v.id} value={v.id}>{v.visit_code} - {v.status} ({v.doctor_name})</option>
+                ))}
+              </select>
             </div>
           </div>
 

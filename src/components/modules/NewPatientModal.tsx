@@ -5,7 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { X } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { createPatient, getDoctors } from "@/lib/tauri";
+import { createPatient, getDoctors, createVisit, createOpdToken } from "@/lib/tauri";
 import { toast } from "sonner";
 import type { Doctor } from "@/types";
 
@@ -26,6 +26,8 @@ const schema = z.object({
   insurance_provider: z.string().optional(),
   insurance_number: z.string().optional(),
   status: z.enum(["Active","OPD"]).default("OPD"),
+  start_visit: z.boolean().default(false),
+  visit_reason: z.string().optional(),
 });
 type F = z.infer<typeof schema>;
 
@@ -58,22 +60,47 @@ export function NewPatientModal({ open, onClose }: { open: boolean; onClose: () 
   }, [selectedDoctorId, doctors, setValue]);
 
   const mut = useMutation({
-    mutationFn: (d: F) => createPatient({
-      ...d,
-      assigned_doctor_id: d.assigned_doctor_id || undefined,
-      email: d.email || undefined,
-      address: d.address || undefined,
-      allergies: d.allergies || undefined,
-      chronic_conditions: d.chronic_conditions || undefined,
-      emergency_contact: d.emergency_contact || undefined,
-      emergency_phone: d.emergency_phone || undefined,
-      insurance_provider: d.insurance_provider || undefined,
-      insurance_number: d.insurance_number || undefined,
-    } as any),
-    onSuccess: (p) => {
-      toast.success(`Patient ${p.patient_code} registered!`);
+    mutationFn: async (d: F) => {
+      const patient = await createPatient({
+        ...d,
+        assigned_doctor_id: d.assigned_doctor_id || undefined,
+        email: d.email || undefined,
+        address: d.address || undefined,
+        allergies: d.allergies || undefined,
+        chronic_conditions: d.chronic_conditions || undefined,
+        emergency_contact: d.emergency_contact || undefined,
+        emergency_phone: d.emergency_phone || undefined,
+        insurance_provider: d.insurance_provider || undefined,
+        insurance_number: d.insurance_number || undefined,
+      } as any);
+
+      if (d.start_visit && d.assigned_doctor_id) {
+        const visit = await createVisit({
+          patient_id: patient.id,
+          doctor_id: d.assigned_doctor_id,
+          department: d.department,
+          reason: d.visit_reason,
+          status: "REGISTERED"
+        });
+
+        await createOpdToken({
+          patient_id: patient.id,
+          doctor_id: d.assigned_doctor_id,
+          department: d.department,
+          queue_date: new Date().toISOString().split("T")[0],
+          visit_id: visit.id
+        });
+
+        return { patient, visitStarted: true };
+      }
+
+      return { patient, visitStarted: false };
+    },
+    onSuccess: (res) => {
+      toast.success(`Patient ${res.patient.patient_code} registered! ${res.visitStarted ? "Visit started and token generated." : ""}`);
       qc.invalidateQueries({ queryKey: ["patients"] });
       qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      qc.invalidateQueries({ queryKey: ["opd-tokens"] });
       reset(); onClose();
     },
     onError: (err: Error) => toast.error(err.message || "Failed to register patient"),
@@ -127,6 +154,18 @@ export function NewPatientModal({ open, onClose }: { open: boolean; onClose: () 
             <div><label className="form-label">Emergency Phone</label><input {...register("emergency_phone")} /></div>
             <div><label className="form-label">Insurance Provider</label><input {...register("insurance_provider")} /></div>
             <div><label className="form-label">Policy / Member ID</label><input {...register("insurance_number")} /></div>
+            <div className="col-span-2 border-t border-border pt-4 mt-2">
+              <div className="flex items-center gap-2 mb-3">
+                <input type="checkbox" {...register("start_visit")} id="start_visit" className="w-4 h-4 rounded border-border" />
+                <label htmlFor="start_visit" className="text-sm font-medium text-white cursor-pointer">Start Visit immediately (OPD)</label>
+              </div>
+              {watch("start_visit") && (
+                <div className="anim-fade-in">
+                  <label className="form-label">Reason for Visit / Chief Complaint</label>
+                  <input {...register("visit_reason")} placeholder="e.g. Regular checkup, persistent cough" />
+                </div>
+              )}
+            </div>
           </div>
         </form>
         <div className="px-6 py-4 border-t border-border flex gap-3 justify-end">

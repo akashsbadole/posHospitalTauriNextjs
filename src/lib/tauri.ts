@@ -9,6 +9,7 @@ import type {
   OpdToken, DischargeSummary, DischargeMedication,
   OtSchedule, OtTheatre, EmergencyCase, BloodDonor, BloodInventory, BloodRequest,
   Ambulance, AmbulanceCall, ExpenseCategory, Expense, Notification, RolePermission,
+  Visit, VisitStatus,
 } from "@/types";
 
 const cmd = <T>(command: string, args?: Record<string, unknown>) =>
@@ -223,6 +224,12 @@ export const assignStaffShift = (data: { employee_id: number; shift_date: string
 // Patient Feedback
 export const getFeedback = () => cmd<PatientFeedback[]>("get_feedback");
 export const createFeedback = (data: { patient_id?: number; rating: number; comments: string; department?: string }) => cmd<PatientFeedback>("create_feedback", { data });
+
+// Visits
+export const getPatientVisits = (patient_id: number) => cmd<Visit[]>("get_patient_visits", { patient_id });
+export const getVisitById = (id: number) => cmd<Visit>("get_visit_by_id", { id });
+export const createVisit = (data: { patient_id: number; doctor_id: number; department: string; reason?: string; status?: string }) => cmd<Visit>("create_visit", { data });
+export const updateVisitStatus = (id: number, status: VisitStatus) => cmd<void>("update_visit_status", { id, status });
 
 // Data Export
 export const exportPatientsCsv = () => cmd<string>("export_patients_csv");
