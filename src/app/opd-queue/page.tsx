@@ -10,12 +10,29 @@ export default function OpdQueuePage() {
   const qc = useQueryClient();
   const today = new Date().toISOString().split("T")[0];
 
+  const announce = (token: any) => {
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      const msg = new SpeechSynthesisUtterance();
+      msg.text = `Token number ${token.token_number}, ${token.patient_name}. Please proceed to Doctor ${token.doctor_name}`;
+      msg.rate = 0.9;
+      window.speechSynthesis.speak(msg);
+    }
+  };
+
   const { data: tokens = [], isLoading } = useQuery({ queryKey: ["opd-tokens", today], queryFn: () => getOpdTokens(today) });
   const { data: doctors = [] } = useQuery({ queryKey: ["doctors"], queryFn: getDoctors });
   const { data: patients = [] } = useQuery({ queryKey: ["patients"], queryFn: () => getPatients() });
 
   const createTokenMut = useMutation({ mutationFn: createOpdToken, onSuccess: () => { qc.invalidateQueries({ queryKey: ["opd-tokens"] }); toast.success("Token generated!"); setShowAddToken(false); }, onError: (err: Error) => toast.error(err.message || "Failed to generate token") });
-  const updateStatusMut = useMutation({ mutationFn: ({ id, status }: { id: number; status: string }) => updateTokenStatus(id, status), onSuccess: () => { qc.invalidateQueries({ queryKey: ["opd-tokens"] }); toast.success("Status updated!"); }, onError: (err: Error) => toast.error(err.message || "Failed to update status") });
+  const updateStatusMut = useMutation({
+    mutationFn: ({ id, status }: { id: number; status: string }) => updateTokenStatus(id, status),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["opd-tokens"] });
+      toast.success("Status updated!");
+      if (data.status === "Called") announce(data);
+    },
+    onError: (err: Error) => toast.error(err.message || "Failed to update status")
+  });
 
   const waiting = tokens.filter(t => t.status === "Waiting").length;
   const called = tokens.filter(t => t.status === "Called").length;
@@ -61,13 +78,16 @@ export default function OpdQueuePage() {
               {isLoading ? <div className="text-center text-muted py-8">Loading...</div> : (
                 <div className="space-y-2">
                   {tokens.map(token => (
-                    <div key={token.id} className={`p-4 rounded-lg border flex items-center justify-between ${token.status === "InProgress" ? "bg-accent/10 border-accent" : token.status === "Completed" ? "bg-success/10 border-success/30" : "bg-surface2 border-border"}`}>
+                    <div key={token.id} className={`p-4 rounded-lg border flex items-center justify-between ${token.status === "InProgress" ? "bg-accent/10 border-accent" : token.status === "Completed" ? "bg-success/10 border-success/30" : token.priority > 0 ? "bg-red-500/5 border-red-500/20" : "bg-surface2 border-border"}`}>
                       <div className="flex items-center gap-4">
-                        <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg ${token.status === "InProgress" ? "bg-accent text-bg" : token.status === "Completed" ? "bg-success/20 text-success" : "bg-surface3 text-white"}`}>
+                        <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg ${token.status === "InProgress" ? "bg-accent text-bg" : token.status === "Completed" ? "bg-success/20 text-success" : token.priority > 0 ? "bg-red-500 text-white" : "bg-surface3 text-white"}`}>
                           {token.token_number}
                         </div>
                         <div>
-                          <div className="font-medium text-white">{token.patient_name}</div>
+                          <div className="flex items-center gap-2">
+                            <div className="font-medium text-white">{token.patient_name}</div>
+                            {token.priority > 0 && <span className="badge badge-red text-[9px] px-1 py-0">URGENT</span>}
+                          </div>
                           <div className="text-xs text-muted">{token.doctor_name} • {token.department}</div>
                         </div>
                       </div>
@@ -111,11 +131,21 @@ export default function OpdQueuePage() {
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center">
           <div className="bg-surface border border-border2 rounded-2xl w-[450px] p-6 space-y-4">
             <h2 className="font-display font-bold text-lg">Generate OPD Token</h2>
-            <form onSubmit={e => { e.preventDefault(); const f = e.target as HTMLFormElement; createTokenMut.mutate({ patient_id: parseInt((f.elements.namedItem("patient_id") as HTMLSelectElement).value), doctor_id: parseInt((f.elements.namedItem("doctor_id") as HTMLSelectElement).value), department: (f.elements.namedItem("department") as HTMLInputElement).value, queue_date: today }); }}>
+            <form onSubmit={e => { e.preventDefault(); const f = e.target as HTMLFormElement; createTokenMut.mutate({ patient_id: parseInt((f.elements.namedItem("patient_id") as HTMLSelectElement).value), doctor_id: parseInt((f.elements.namedItem("doctor_id") as HTMLSelectElement).value), department: (f.elements.namedItem("department") as HTMLInputElement).value, queue_date: today, priority: parseInt((f.elements.namedItem("priority") as HTMLSelectElement).value) }); }}>
               <div className="space-y-4">
                 <div><label className="form-label">Patient *</label><select name="patient_id" required className="select"><option value="">Select Patient</option>{patients.map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}</select></div>
                 <div><label className="form-label">Doctor *</label><select name="doctor_id" required className="select"><option value="">Select Doctor</option>{doctors.map(d => <option key={d.id} value={d.id}>{d.full_name} - {d.specialization}</option>)}</select></div>
-                <div><label className="form-label">Department *</label><input name="department" required className="input" placeholder="e.g., General Medicine" /></div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div><label className="form-label">Department *</label><input name="department" required className="input" placeholder="e.g., General Medicine" /></div>
+                  <div>
+                    <label className="form-label">Priority</label>
+                    <select name="priority" className="select">
+                      <option value="0">Normal</option>
+                      <option value="1">Urgent</option>
+                      <option value="2">Emergency</option>
+                    </select>
+                  </div>
+                </div>
                 <div className="flex gap-3 justify-end pt-2">
                   <button type="button" onClick={() => setShowAddToken(false)} className="btn btn-ghost">Cancel</button>
                   <button type="submit" className="btn btn-primary">Generate Token</button>

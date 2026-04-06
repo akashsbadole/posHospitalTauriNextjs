@@ -56,6 +56,12 @@ fn run_gst_migrations(conn: &rusqlite::Connection) -> Result<()> {
         eprintln!("[MIGRATION] Adding photo_path column to patients table");
         conn.execute("ALTER TABLE patients ADD COLUMN photo_path TEXT", [])?;
     }
+
+    // Add priority column to opd_tokens table if it doesn't exist
+    if !column_exists(conn, "opd_tokens", "priority")? {
+        eprintln!("[MIGRATION] Adding priority column to opd_tokens table");
+        conn.execute("ALTER TABLE opd_tokens ADD COLUMN priority INTEGER NOT NULL DEFAULT 0", [])?;
+    }
     
     Ok(())
 }
@@ -632,6 +638,7 @@ CREATE TABLE IF NOT EXISTS opd_tokens (
     called_at       TEXT,
     started_at      TEXT,
     completed_at    TEXT,
+    priority        INTEGER NOT NULL DEFAULT 0,
     created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

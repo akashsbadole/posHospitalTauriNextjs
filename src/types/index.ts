@@ -249,7 +249,8 @@ export interface OpdToken {
   id: number; token_number: number; patient_id: number; patient_name?: string;
   doctor_id: number; doctor_name?: string; department: string; queue_date: string;
   status: "Waiting" | "Called" | "InProgress" | "Completed" | "Cancelled";
-  wait_time: number; called_at?: string; started_at?: string; completed_at?: string; created_at: string;
+  wait_time: number; called_at?: string; started_at?: string; completed_at?: string;
+  priority: number; created_at: string;
 }
 
 // Discharge Summary

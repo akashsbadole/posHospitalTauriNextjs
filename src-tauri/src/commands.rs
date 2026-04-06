@@ -2037,15 +2037,15 @@ pub fn get_opd_tokens(state: State<AppState>, date: Option<String>, status: Opti
     let conn = state.pool.get().map_err(|e| e.to_string())?;
     let date = date.unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d").to_string());
     let mut stmt = conn.prepare(
-        "SELECT t.id, t.token_number, t.patient_id, p.full_name, t.doctor_id, d.full_name, t.department, t.queue_date, t.status, t.wait_time, t.called_at, t.started_at, t.completed_at, t.created_at 
+        "SELECT t.id, t.token_number, t.patient_id, p.full_name, t.doctor_id, d.full_name, t.department, t.queue_date, t.status, t.wait_time, t.called_at, t.started_at, t.completed_at, t.priority, t.created_at
          FROM opd_tokens t JOIN patients p ON t.patient_id = p.id JOIN doctors d ON t.doctor_id = d.id 
-         WHERE t.queue_date = ?1 AND (?2 IS NULL OR t.status = ?2) ORDER BY t.token_number ASC"
+         WHERE t.queue_date = ?1 AND (?2 IS NULL OR t.status = ?2) ORDER BY t.priority DESC, t.token_number ASC"
     ).map_err(|e| e.to_string())?;
     let items = stmt.query_map(params![date, status], |r| Ok(OpdToken {
         id: r.get(0)?, token_number: r.get(1)?, patient_id: r.get(2)?, patient_name: r.get(3)?,
         doctor_id: r.get(4)?, doctor_name: r.get(5)?, department: r.get(6)?, queue_date: r.get(7)?,
         status: r.get(8)?, wait_time: r.get(9)?, called_at: r.get(10)?, started_at: r.get(11)?,
-        completed_at: r.get(12)?, created_at: r.get(13)?,
+        completed_at: r.get(12)?, priority: r.get(13)?, created_at: r.get(14)?,
     })).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
     Ok(items)
 }
@@ -2057,9 +2057,10 @@ pub fn create_opd_token(state: State<AppState>, data: CreateOpdToken) -> Result<
 
     let max_token: i64 = tx.query_row("SELECT COALESCE(MAX(token_number), 0) FROM opd_tokens WHERE queue_date = ?1 AND doctor_id = ?2", params![data.queue_date, data.doctor_id], |r| r.get(0)).map_err(|e| e.to_string())?;
     let token_number = max_token + 1;
+    let priority = data.priority.unwrap_or(0);
     tx.execute(
-        "INSERT INTO opd_tokens (token_number, patient_id, doctor_id, department, queue_date) VALUES (?1,?2,?3,?4,?5)",
-        params![token_number, data.patient_id, data.doctor_id, data.department, data.queue_date],
+        "INSERT INTO opd_tokens (token_number, patient_id, doctor_id, department, queue_date, priority) VALUES (?1,?2,?3,?4,?5,?6)",
+        params![token_number, data.patient_id, data.doctor_id, data.department, data.queue_date, priority],
     ).map_err(|e| e.to_string())?;
     let id = tx.last_insert_rowid();
 
@@ -2071,8 +2072,8 @@ pub fn create_opd_token(state: State<AppState>, data: CreateOpdToken) -> Result<
 
     tx.commit().map_err(|e| e.to_string())?;
 
-    conn.query_row("SELECT id, token_number, patient_id, doctor_id, department, queue_date, status, wait_time, created_at FROM opd_tokens WHERE id = ?1", params![id],
-        |r| Ok(OpdToken { id: r.get(0)?, token_number: r.get(1)?, patient_id: r.get(2)?, patient_name: Some(pat_name), doctor_id: r.get(3)?, doctor_name: Some(doc_name), department: r.get(4)?, queue_date: r.get(5)?, status: r.get(6)?, wait_time: r.get(7)?, called_at: None, started_at: None, completed_at: None, created_at: r.get(8)? })).map_err(|e| e.to_string())
+    conn.query_row("SELECT id, token_number, patient_id, doctor_id, department, queue_date, status, wait_time, priority, created_at FROM opd_tokens WHERE id = ?1", params![id],
+        |r| Ok(OpdToken { id: r.get(0)?, token_number: r.get(1)?, patient_id: r.get(2)?, patient_name: Some(pat_name), doctor_id: r.get(3)?, doctor_name: Some(doc_name), department: r.get(4)?, queue_date: r.get(5)?, status: r.get(6)?, wait_time: r.get(7)?, called_at: None, started_at: None, completed_at: None, priority: r.get(8)?, created_at: r.get(9)? })).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -2111,9 +2112,9 @@ pub fn update_token_status(state: State<AppState>, id: i64, new_status: String) 
     tx.commit().map_err(|e| e.to_string())?;
 
     let token: OpdToken = conn.query_row(
-        "SELECT t.id, t.token_number, t.patient_id, p.full_name, t.doctor_id, d.full_name, t.department, t.queue_date, t.status, t.wait_time, t.called_at, t.started_at, t.completed_at, t.created_at FROM opd_tokens t JOIN patients p ON t.patient_id = p.id JOIN doctors d ON t.doctor_id = d.id WHERE t.id = ?1",
+        "SELECT t.id, t.token_number, t.patient_id, p.full_name, t.doctor_id, d.full_name, t.department, t.queue_date, t.status, t.wait_time, t.called_at, t.started_at, t.completed_at, t.priority, t.created_at FROM opd_tokens t JOIN patients p ON t.patient_id = p.id JOIN doctors d ON t.doctor_id = d.id WHERE t.id = ?1",
         params![id],
-        |r| Ok(OpdToken { id: r.get(0)?, token_number: r.get(1)?, patient_id: r.get(2)?, patient_name: r.get(3)?, doctor_id: r.get(4)?, doctor_name: r.get(5)?, department: r.get(6)?, queue_date: r.get(7)?, status: r.get(8)?, wait_time: r.get(9)?, called_at: r.get(10)?, started_at: r.get(11)?, completed_at: r.get(12)?, created_at: r.get(13)? })
+        |r| Ok(OpdToken { id: r.get(0)?, token_number: r.get(1)?, patient_id: r.get(2)?, patient_name: r.get(3)?, doctor_id: r.get(4)?, doctor_name: r.get(5)?, department: r.get(6)?, queue_date: r.get(7)?, status: r.get(8)?, wait_time: r.get(9)?, called_at: r.get(10)?, started_at: r.get(11)?, completed_at: r.get(12)?, priority: r.get(13)?, created_at: r.get(14)? })
     ).map_err(|e| e.to_string())?;
     audit::log(&state.pool, "System", "Token status updated", "opd_token", Some(id), Some(&new_status));
     Ok(token)
@@ -2755,7 +2756,6 @@ pub fn create_feedback(state: State<AppState>, data: CreateFeedback) -> Result<P
 
 // ─── DATA EXPORT ──────────────────────────────────────────────────────────────
 
-#[tauri::command]
 fn escape_csv(val: &str) -> String {
     if val.contains(',') || val.contains('"') || val.contains('\n') || val.contains('\r') {
         format!("\"{}\"", val.replace('"', "\"\""))

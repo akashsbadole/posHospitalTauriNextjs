@@ -888,6 +888,7 @@ pub struct OpdToken {
     pub called_at: Option<String>,
     pub started_at: Option<String>,
     pub completed_at: Option<String>,
+    pub priority: i64,
     pub created_at: String,
 }
 
@@ -897,6 +898,7 @@ pub struct CreateOpdToken {
     pub doctor_id: i64,
     pub department: String,
     pub queue_date: String,
+    pub priority: Option<i64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
