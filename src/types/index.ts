@@ -92,6 +92,13 @@ export interface InvoiceItem {
   quantity: number; unit_price: number; total: number;
 }
 
+export interface CreateInvoiceItem {
+  description: string;
+  category: string;
+  quantity: number;
+  unit_price: number;
+}
+
 export interface InsuranceClaim {
   id: number; claim_code: string; patient_id: number; patient_name?: string;
   invoice_id: number; provider_name: string; policy_number: string;

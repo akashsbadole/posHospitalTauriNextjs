@@ -53,3 +53,17 @@ export async function sendAppointmentReminder(patientName: string, time: string)
     body: `Appointment with ${patientName} at ${time}`,
   });
 }
+
+export async function simulateSms(phone: string, message: string): Promise<void> {
+  const hasPermission = await checkNotificationPermission();
+  if (!hasPermission) {
+    console.log(`[SIMULATED SMS to ${phone}] ${message}`);
+    return;
+  }
+
+  sendNotification({
+    title: `SMS to ${phone}`,
+    body: message,
+  });
+  console.log(`[SIMULATED SMS to ${phone}] ${message}`);
+}

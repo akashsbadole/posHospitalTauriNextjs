@@ -3,9 +3,9 @@ import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { X } from "lucide-react";
+import { X, Sparkles } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { createPatient, getDoctors, createVisit, createOpdToken } from "@/lib/tauri";
+import { createPatient, getDoctors, createVisit, createOpdToken, getNextAvailableDoctor } from "@/lib/tauri";
 import { toast } from "sonner";
 import type { Doctor } from "@/types";
 
@@ -50,6 +50,17 @@ export function NewPatientModal({ open, onClose }: { open: boolean; onClose: () 
   }, [open]);
 
   const selectedDoctorId = watch("assigned_doctor_id");
+  const selectedDept = watch("department");
+
+  const autoAssignDoctor = async () => {
+    try {
+      const doc = await getNextAvailableDoctor(selectedDept);
+      setValue("assigned_doctor_id", doc.id);
+      toast.success(`Auto-assigned ${doc.full_name} (${doc.specialization})`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No available doctor found in this department");
+    }
+  };
 
   useEffect(() => {
     if (selectedDoctorId) {
@@ -139,7 +150,16 @@ export function NewPatientModal({ open, onClose }: { open: boolean; onClose: () 
               <select {...register("blood_group")} className="w-full">{["A+","A-","B+","B-","O+","O-","AB+","AB-"].map(g=><option key={g}>{g}</option>)}</select>
             </div>
             <div>
-              <label className="form-label">Assigned Doctor</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="form-label mb-0">Assigned Doctor</label>
+                <button
+                  type="button"
+                  onClick={autoAssignDoctor}
+                  className="text-[10px] text-accent flex items-center gap-0.5 hover:underline"
+                >
+                  <Sparkles size={10} /> Auto-Assign
+                </button>
+              </div>
               <select {...register("assigned_doctor_id", { valueAsNumber: true })} className="w-full">
                 <option value="">Select Doctor</option>
                 {doctors.map(d => (

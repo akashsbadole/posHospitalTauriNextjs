@@ -323,7 +323,7 @@ pub struct CreateInvoice {
     pub visit_id: Option<i64>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CreateInvoiceItem {
     pub description: String,
     pub category: String,

@@ -5,7 +5,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { createInvoice, getPatients, getPatientVisits } from "@/lib/tauri";
+import { createInvoice, getPatients, getPatientVisits, getVisitCharges } from "@/lib/tauri";
 import { toast } from "sonner";
 import type { Patient, Visit } from "@/types";
 
@@ -59,6 +59,7 @@ export function NewInvoiceModal({ open, onClose }: Props) {
   });
 
   const selectedPatientId = watch("patient_id");
+  const selectedVisitId = watch("visit_id");
 
   useEffect(() => {
     if (open) {
@@ -97,6 +98,33 @@ export function NewInvoiceModal({ open, onClose }: Props) {
 
   const removeItem = (id: string) => {
     setItems(items.filter(i => i.id !== id));
+  };
+
+  const loadVisitCharges = async () => {
+    if (!selectedVisitId) {
+      toast.error("Please select a visit first");
+      return;
+    }
+    try {
+      const charges = await getVisitCharges(selectedVisitId);
+      if (charges.length === 0) {
+        toast.info("No charges found for this visit yet.");
+        return;
+      }
+
+      const newItems = charges.map(c => ({
+        id: Math.random().toString(36).substr(2, 9),
+        description: c.description,
+        category: c.category,
+        quantity: c.quantity,
+        unit_price: c.unit_price,
+      }));
+
+      setItems([...items, ...newItems]);
+      toast.success(`Loaded ${charges.length} charges from visit`);
+    } catch (err) {
+      toast.error("Failed to load visit charges");
+    }
   };
 
   const subtotal = items.reduce((sum, i) => sum + (i.quantity * i.unit_price), 0);
@@ -197,8 +225,19 @@ export function NewInvoiceModal({ open, onClose }: Props) {
               </div>
 
               <div className="col-span-2">
-                <label className="form-label">Link to Visit</label>
-                <select {...register("visit_id", { valueAsNumber: true })} className="w-full">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="form-label mb-0">Link to Visit</label>
+                  {selectedVisitId && (
+                    <button
+                      type="button"
+                      onClick={loadVisitCharges}
+                      className="text-xs text-accent hover:underline flex items-center gap-1"
+                    >
+                      <Plus size={10} /> Load Charges from Visit
+                    </button>
+                  )}
+                </div>
+                <select {...register("visit_id", { valueAsNumber: true })} className="w-full text-sm">
                   <option value="">No link / New Visit</option>
                   {patientVisits.filter(v => v.status !== "COMPLETED").map(v => (
                     <option key={v.id} value={v.id}>{v.visit_code} - {v.status} ({v.doctor_name})</option>

@@ -5,8 +5,9 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { createPrescription, getPatients, getDoctors, getInventory, getPatientVisits } from "@/lib/tauri";
+import { createPrescription, getPatients, getDoctors, getInventory, getPatientVisits, getNextAvailableDoctor } from "@/lib/tauri";
 import { toast } from "sonner";
+import { X, Plus, Trash2, Search, Sparkles } from "lucide-react";
 import type { Patient, Doctor, InventoryItem, Visit } from "@/types";
 
 const schema = z.object({
@@ -56,6 +57,16 @@ export function NewPrescriptionModal({ open, onClose }: Props) {
       valid_until: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
     },
   });
+
+  const autoAssignDoctor = async () => {
+    try {
+      const doc = await getNextAvailableDoctor("General Medicine");
+      setValue("doctor_id", doc.id);
+      toast.success(`Auto-assigned ${doc.full_name}`);
+    } catch (err) {
+      toast.error("No available doctor found");
+    }
+  };
 
   const selectedPatientId = watch("patient_id");
 
@@ -183,7 +194,16 @@ export function NewPrescriptionModal({ open, onClose }: Props) {
             </div>
 
             <div>
-              <label className="form-label">Doctor *</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="form-label mb-0">Doctor *</label>
+                <button
+                  type="button"
+                  onClick={autoAssignDoctor}
+                  className="text-[10px] text-accent flex items-center gap-0.5 hover:underline"
+                >
+                  <Sparkles size={10} /> Auto-Assign
+                </button>
+              </div>
               <select {...register("doctor_id", { valueAsNumber: true })} className="w-full">
                 <option value="">Select Doctor</option>
                 {doctors.map(d => (

@@ -1,13 +1,14 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getOpdTokens, createOpdToken, updateTokenStatus, getDoctors, getPatients, createVisit } from "@/lib/tauri";
+import { getOpdTokens, createOpdToken, updateTokenStatus, getDoctors, getPatients, createVisit, getNextAvailableDoctor } from "@/lib/tauri";
 import { listen } from "@tauri-apps/api/event";
 import { toast } from "sonner";
-import { MonitorPlay, Plus, Play, CheckCircle, Phone, User, Activity } from "lucide-react";
+import { MonitorPlay, Plus, Play, CheckCircle, Phone, User, Activity, Sparkles } from "lucide-react";
 
 export default function OpdQueuePage() {
   const [showAddToken, setShowAddToken] = useState(false);
+  const [tokenForm, setTokenForm] = useState({ doctor_id: "", department: "General Medicine" });
   const qc = useQueryClient();
   const today = new Date().toISOString().split("T")[0];
 
@@ -29,6 +30,16 @@ export default function OpdQueuePage() {
 
   const { data: tokens = [], isLoading } = useQuery({ queryKey: ["opd-tokens", today], queryFn: () => getOpdTokens(today) });
   const { data: doctors = [] } = useQuery({ queryKey: ["doctors"], queryFn: getDoctors });
+
+  const autoAssignDoctor = async () => {
+    try {
+      const doc = await getNextAvailableDoctor(tokenForm.department);
+      setTokenForm({ ...tokenForm, doctor_id: doc.id.toString() });
+      toast.success(`Auto-assigned ${doc.full_name}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No available doctor found");
+    }
+  };
   const { data: patients = [] } = useQuery({ queryKey: ["patients"], queryFn: () => getPatients() });
 
   const createTokenMut = useMutation({
@@ -160,12 +171,43 @@ export default function OpdQueuePage() {
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center">
           <div className="bg-surface border border-border2 rounded-2xl w-[450px] p-6 space-y-4">
             <h2 className="font-display font-bold text-lg">Generate OPD Token</h2>
-            <form onSubmit={e => { e.preventDefault(); const f = e.target as HTMLFormElement; createTokenMut.mutate({ patient_id: parseInt((f.elements.namedItem("patient_id") as HTMLSelectElement).value), doctor_id: parseInt((f.elements.namedItem("doctor_id") as HTMLSelectElement).value), department: (f.elements.namedItem("department") as HTMLInputElement).value, queue_date: today, priority: parseInt((f.elements.namedItem("priority") as HTMLSelectElement).value), visit_type: (f.elements.namedItem("visit_type") as HTMLSelectElement).value }); }}>
+            <form onSubmit={e => { e.preventDefault(); const f = e.target as HTMLFormElement; createTokenMut.mutate({ patient_id: parseInt((f.elements.namedItem("patient_id") as HTMLSelectElement).value), doctor_id: parseInt(tokenForm.doctor_id), department: tokenForm.department, queue_date: today, priority: parseInt((f.elements.namedItem("priority") as HTMLSelectElement).value), visit_type: (f.elements.namedItem("visit_type") as HTMLSelectElement).value }); }}>
               <div className="space-y-4">
                 <div><label className="form-label">Patient *</label><select name="patient_id" required className="select"><option value="">Select Patient</option>{patients.map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}</select></div>
-                <div><label className="form-label">Doctor *</label><select name="doctor_id" required className="select"><option value="">Select Doctor</option>{doctors.map(d => <option key={d.id} value={d.id}>{d.full_name} - {d.specialization}</option>)}</select></div>
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="form-label mb-0">Doctor *</label>
+                    <button
+                      type="button"
+                      onClick={autoAssignDoctor}
+                      className="text-[10px] text-accent flex items-center gap-0.5 hover:underline"
+                    >
+                      <Sparkles size={10} /> Auto-Assign
+                    </button>
+                  </div>
+                  <select
+                    name="doctor_id"
+                    required
+                    className="select"
+                    value={tokenForm.doctor_id}
+                    onChange={e => setTokenForm({ ...tokenForm, doctor_id: e.target.value })}
+                  >
+                    <option value="">Select Doctor</option>
+                    {doctors.map(d => <option key={d.id} value={d.id}>{d.full_name} - {d.specialization}</option>)}
+                  </select>
+                </div>
                 <div className="grid grid-cols-2 gap-4">
-                  <div><label className="form-label">Department *</label><input name="department" required className="input" placeholder="e.g., General Medicine" /></div>
+                  <div>
+                    <label className="form-label">Department *</label>
+                    <input
+                      name="department"
+                      required
+                      className="input"
+                      placeholder="e.g., General Medicine"
+                      value={tokenForm.department}
+                      onChange={e => setTokenForm({ ...tokenForm, department: e.target.value })}
+                    />
+                  </div>
                   <div>
                     <label className="form-label">Visit Type</label>
                     <select name="visit_type" className="select">

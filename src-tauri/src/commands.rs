@@ -1128,6 +1128,66 @@ pub fn get_invoice_by_id(state: State<AppState>, id: i64) -> Result<Invoice, Str
 }
 
 #[tauri::command]
+pub fn get_visit_charges(state: State<AppState>, visit_id: i64) -> Result<Vec<CreateInvoiceItem>, String> {
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    let mut charges = Vec::new();
+
+    // 1. Doctor Consultation Fee
+    let (fee, doc_name): (f64, String) = conn.query_row(
+        "SELECT d.consultation_fee, d.full_name FROM visits v JOIN doctors d ON v.doctor_id = d.id WHERE v.id = ?1",
+        params![visit_id],
+        |r| Ok((r.get(0)?, r.get(1)?))
+    ).map_err(|e| e.to_string())?;
+
+    charges.push(CreateInvoiceItem {
+        description: format!("Consultation Fee - {}", doc_name),
+        category: "Consultation".to_string(),
+        quantity: 1,
+        unit_price: fee,
+    });
+
+    // 2. Lab Tests
+    let mut stmt = conn.prepare("SELECT test_name, 500.0 FROM lab_tests WHERE visit_id = ?1").map_err(|e| e.to_string())?;
+    let lab_charges = stmt.query_map(params![visit_id], |r| Ok(CreateInvoiceItem {
+        description: format!("Lab Test: {}", r.get::<_, String>(0)?),
+        category: "Lab".to_string(),
+        quantity: 1,
+        unit_price: r.get(1)?,
+    })).map_err(|e| e.to_string())?;
+
+    for lc in lab_charges.filter_map(|r| r.ok()) {
+        charges.push(lc);
+    }
+
+    // 3. Pharmacy (Issued Prescriptions)
+    let mut stmt = conn.prepare(
+        "SELECT pd.drug_name, pd.duration_days, i.unit_price
+         FROM prescriptions p
+         JOIN prescription_drugs pd ON p.id = pd.prescription_id
+         LEFT JOIN inventory i ON pd.drug_name LIKE '%' || i.name || '%'
+         WHERE p.visit_id = ?1 AND p.status = 'Issued'"
+    ).map_err(|e| e.to_string())?;
+
+    let rx_charges = stmt.query_map(params![visit_id], |r| {
+        let name: String = r.get(0)?;
+        let qty: i64 = r.get(1)?;
+        let price: Option<f64> = r.get(2)?;
+        Ok(CreateInvoiceItem {
+            description: format!("Medicine: {}", name),
+            category: "Pharmacy".to_string(),
+            quantity: qty,
+            unit_price: price.unwrap_or(100.0), // Default if not in inventory
+        })
+    }).map_err(|e| e.to_string())?;
+
+    for rc in rx_charges.filter_map(|r| r.ok()) {
+        charges.push(rc);
+    }
+
+    Ok(charges)
+}
+
+#[tauri::command]
 pub fn create_invoice(state: State<AppState>, data: CreateInvoice, items: Vec<CreateInvoiceItem>) -> Result<Invoice, String> {
     let mut conn = state.pool.get().map_err(|e| e.to_string())?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
@@ -1561,6 +1621,27 @@ pub fn get_audit_logs(state: State<AppState>, limit: Option<i64>, entity: Option
          ORDER BY id DESC LIMIT ?2"
     ).map_err(|e| e.to_string())?;
     let logs = stmt.query_map(params![entity, lim], |r| Ok(AuditLog {
+        id: r.get(0)?, user_name: r.get(1)?, action: r.get(2)?, entity: r.get(3)?,
+        entity_id: r.get(4)?, details: r.get(5)?, ip_address: r.get(6)?, timestamp: r.get(7)?,
+    })).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
+    Ok(logs)
+}
+
+#[tauri::command]
+pub fn get_patient_audit_logs(state: State<AppState>, patient_id: i64) -> Result<Vec<AuditLog>, String> {
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(
+        "SELECT id, user_name, action, entity, entity_id, details, ip_address, timestamp
+         FROM audit_logs
+         WHERE (entity = 'patient' AND entity_id = ?1)
+            OR (entity = 'appointment' AND entity_id IN (SELECT id FROM appointments WHERE patient_id = ?1))
+            OR (entity = 'prescription' AND entity_id IN (SELECT id FROM prescriptions WHERE patient_id = ?1))
+            OR (entity = 'lab' AND entity_id IN (SELECT id FROM lab_tests WHERE patient_id = ?1))
+            OR (entity = 'billing' AND entity_id IN (SELECT id FROM invoices WHERE patient_id = ?1))
+            OR (entity = 'visit' AND entity_id IN (SELECT id FROM visits WHERE patient_id = ?1))
+         ORDER BY id DESC"
+    ).map_err(|e| e.to_string())?;
+    let logs = stmt.query_map(params![patient_id], |r| Ok(AuditLog {
         id: r.get(0)?, user_name: r.get(1)?, action: r.get(2)?, entity: r.get(3)?,
         entity_id: r.get(4)?, details: r.get(5)?, ip_address: r.get(6)?, timestamp: r.get(7)?,
     })).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();

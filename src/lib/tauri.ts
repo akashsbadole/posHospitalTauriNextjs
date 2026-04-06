@@ -1,8 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
-  Patient, Doctor, Appointment, Prescription, PrescriptionDrug,
-  LabTest, Ward, Bed, Invoice, InvoiceItem, InsuranceClaim, InventoryItem,
-  DashboardStats, AuditLog, Staff, VitalSigns, User, Setting,
+  Patient, Doctor, Appointment, Prescription, PrescriptionDrug, LabTest, Ward, Bed, Invoice, InvoiceItem, CreateInvoiceItem,
+  InsuranceClaim, InventoryItem, DashboardStats, AuditLog, Staff, VitalSigns, User, Setting,
   PatientStatus, AppointmentStatus, BedStatus, InvoiceStatus, ClaimStatus,
   TaxSetting, PaymentBatch, PaymentBatchItem, MessageTemplate, MessageLog,
   Employee, LeaveRequest, Attendance, AssetCategory, Asset, AssetMaintenance,
@@ -84,6 +83,7 @@ export const createWardWithBeds      = (data: Omit<Ward,"id">) => cmd<Ward>("cre
 // Billing
 export const getInvoices             = (status?: InvoiceStatus, patient_id?: number) => cmd<Invoice[]>("get_invoices", { status, patient_id });
 export const getInvoiceById          = (id: number)     => cmd<Invoice>("get_invoice_by_id", { id });
+export const getVisitCharges         = (visit_id: number) => cmd<CreateInvoiceItem[]>("get_visit_charges", { visit_id });
 export const createInvoice           = (
   data: Omit<Invoice,"id"|"invoice_code"|"created_at"|"patient_name"|"items">,
   items: Omit<InvoiceItem,"id"|"invoice_id">[]
@@ -108,6 +108,7 @@ export const deleteInventoryItem     = (id: number)     => cmd<void>("delete_inv
 
 // Audit
 export const getAuditLogs            = (limit?: number, entity?: string) => cmd<AuditLog[]>("get_audit_logs", { limit, entity });
+export const getPatientAuditLogs     = (patient_id: number) => cmd<AuditLog[]>("get_patient_audit_logs", { patient_id });
 
 // Sync
 export const syncToCloud             = () => cmd<{ synced: number; errors: number }>("sync_to_cloud");
@@ -165,7 +166,7 @@ export const createAssetMaintenance  = (data: { asset_id: number; maintenance_ty
 
 // OPD Queue
 export const getOpdTokens           = (date?: string, status?: string) => cmd<OpdToken[]>("get_opd_tokens", { date, status });
-export const createOpdToken         = (data: { patient_id: number; doctor_id: number; department: string; queue_date: string; priority?: number }) => cmd<OpdToken>("create_opd_token", { data });
+export const createOpdToken         = (data: { patient_id: number; doctor_id: number; department: string; queue_date: string; priority?: number; visit_id?: number }) => cmd<OpdToken>("create_opd_token", { data });
 export const updateTokenStatus       = (id: number, new_status: string) => cmd<OpdToken>("update_token_status", { id, new_status });
 
 // Discharge Summary

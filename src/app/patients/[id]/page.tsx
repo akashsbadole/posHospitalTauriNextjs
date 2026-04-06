@@ -1,14 +1,15 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
-import { getPatientById, getPatientVitals, getAppointments, getPrescriptions, getLabTests, getInvoices, getMedicalRecords, createMedicalRecord, getDoctors, getPatientVisits, createVisit, createOpdToken, issuePrescription, updateVisitDiagnosis } from "@/lib/tauri";
-import { ArrowLeft, Edit, Calendar, Pill, FlaskConical, FileText, Activity, User, Plus, X, Download, Clock } from "lucide-react";
+import { getPatientById, getPatientVitals, getAppointments, getPrescriptions, getLabTests, getInvoices, getMedicalRecords, createMedicalRecord, getDoctors, getPatientVisits, createVisit, createOpdToken, issuePrescription, updateVisitDiagnosis, createAppointment, getPatientAuditLogs } from "@/lib/tauri";
+import { ArrowLeft, Edit, Calendar, Pill, FlaskConical, FileText, Activity, User, Plus, X, Download, Clock, History } from "lucide-react";
 import { useState } from "react";
 import { EditPatientModal } from "@/components/modules/EditPatientModal";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { simulateSms } from "@/lib/notifications";
 
-const TABS = ["Overview", "Visits", "Appointments", "Prescriptions", "Lab Tests", "Invoices", "Vitals", "Medical Records"] as const;
+const TABS = ["Overview", "Visits", "Appointments", "Prescriptions", "Lab Tests", "Invoices", "Vitals", "Medical Records", "Activity Log"] as const;
 type Tab = typeof TABS[number];
 
 export default function PatientDetailPage() {
@@ -60,6 +61,11 @@ export default function PatientDetailPage() {
     queryFn: () => getPatientVisits(patientId),
   });
 
+  const { data: auditLogs = [] } = useQuery({
+    queryKey: ["patient-audit", patientId],
+    queryFn: () => getPatientAuditLogs(patientId),
+  });
+
   const activeVisit = visits.find(v => v.status !== "COMPLETED");
 
   const { data: doctors = [] } = useQuery({
@@ -95,6 +101,32 @@ export default function PatientDetailPage() {
       toast.success("Diagnosis updated!");
     },
     onError: (err: Error) => toast.error(err.message || "Failed to update diagnosis")
+  });
+
+  const scheduleFollowUpMut = useMutation({
+    mutationFn: async (date: string) => {
+      if (!activeVisit) throw new Error("No active visit");
+      const appt = await createAppointment({
+        patient_id: patientId,
+        doctor_id: activeVisit.doctor_id,
+        department: activeVisit.department,
+        appointment_date: date,
+        appointment_time: "09:00",
+        type: "Follow-up",
+        status: "Scheduled",
+        notes: `Auto-scheduled follow-up from visit ${activeVisit.visit_code}`
+      } as any);
+
+      if (patient?.phone) {
+        await simulateSms(patient.phone, `Hi ${patient.full_name}, a follow-up appointment is scheduled for ${date} at 09:00 AM with Dr. ${activeVisit.doctor_name}.`);
+      }
+      return appt;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["patient-appointments", patientId] });
+      toast.success("Follow-up scheduled and SMS sent!");
+    },
+    onError: (err: Error) => toast.error(err.message)
   });
 
   const startVisitMut = useMutation({
@@ -157,6 +189,10 @@ export default function PatientDetailPage() {
                const diag = prompt("Enter diagnosis:", activeVisit.diagnosis || "");
                if (diag !== null) updateDiagnosisMut.mutate({ id: activeVisit.id, diagnosis: diag });
              }} className="btn btn-xs btn-ghost text-accent border-accent/20">Set Diagnosis</button>
+             <button onClick={() => {
+               const date = prompt("Enter follow-up date (YYYY-MM-DD):", new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0]);
+               if (date) scheduleFollowUpMut.mutate(date);
+             }} className="btn btn-xs btn-ghost text-accent border-accent/20">Schedule Follow-up</button>
              <button onClick={() => setTab("Medical Records")} className="btn btn-xs btn-ghost text-accent border-accent/20">Add Clinical Note</button>
              <button onClick={() => setTab("Lab Tests")} className="btn btn-xs btn-ghost text-accent border-accent/20">Order Test</button>
           </div>
@@ -335,8 +371,23 @@ export default function PatientDetailPage() {
                       <td className="text-white">{l.test_name}</td>
                       <td className="text-muted">{l.test_category}</td>
                       <td className="text-white">{l.ordered_date}</td>
-                      <td className={l.is_abnormal ? "text-danger" : "text-success"}>{l.result_value || "—"}</td>
-                      <td><span className={`badge ${l.status === "Ready" ? "badge-green" : "badge-yellow"}`}>{l.status}</span></td>
+                      <td className={l.is_abnormal ? "text-danger" : "text-success"}>
+                        {l.result_value ? `${l.result_value} ${l.result_unit || ''}` : "—"}
+                      </td>
+                      <td>
+                        <div className="flex items-center gap-2">
+                          <span className={`badge ${l.status === "Ready" ? "badge-green" : "badge-yellow"}`}>{l.status}</span>
+                          {l.report_path && (
+                            <button
+                              onClick={() => toast.info(`Report file: ${l.report_path}`)}
+                              className="text-accent hover:text-white"
+                              title="View Report Path"
+                            >
+                              <FileText size={14} />
+                            </button>
+                          )}
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -383,6 +434,34 @@ export default function PatientDetailPage() {
                       <div><span className="text-subtle">HR:</span> <span className="text-white">{v.heart_rate} bpm</span></div>
                       <div><span className="text-subtle">Temp:</span> <span className="text-white">{v.temperature}°F</span></div>
                       <div><span className="text-subtle">SpO2:</span> <span className="text-white">{v.spo2}%</span></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === "Activity Log" && (
+          <div className="p-5">
+            <h3 className="font-display font-bold text-sm text-white mb-4 flex items-center gap-2">
+              <History size={16} className="text-accent" /> Patient Audit Trail
+            </h3>
+            {auditLogs.length === 0 ? (
+              <div className="text-center py-12 text-muted">No activity recorded yet</div>
+            ) : (
+              <div className="space-y-3">
+                {auditLogs.map(log => (
+                  <div key={log.id} className="flex gap-4 p-3 bg-surface2 border border-border rounded-lg items-start">
+                    <div className="w-2 h-2 rounded-full bg-accent mt-1.5 flex-shrink-0" />
+                    <div className="flex-1">
+                      <div className="flex justify-between">
+                        <span className="text-sm font-medium text-white">{log.action}</span>
+                        <span className="text-[10px] text-subtle">{log.timestamp}</span>
+                      </div>
+                      <div className="text-[11px] text-subtle mt-0.5">
+                        By {log.user_name} • Entity: {log.entity} {log.details ? `(${log.details})` : ''}
+                      </div>
                     </div>
                   </div>
                 ))}

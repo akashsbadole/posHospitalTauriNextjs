@@ -1,9 +1,10 @@
 "use client";
 import { useState, useEffect } from "react";
-import { X } from "lucide-react";
+import { X, FileUp } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { updateLabResult } from "@/lib/tauri";
+import { updateLabResult, uploadLabReport } from "@/lib/tauri";
 import { sendLabResultNotification } from "@/lib/notifications";
+import { open } from "@tauri-apps/plugin-dialog";
 import { toast } from "sonner";
 
 interface LabResultEntryProps {
@@ -30,15 +31,16 @@ const REFERENCE_RANGES: Record<string, { min: number; max: number; unit: string 
   "Urea": { min: 7, max: 20, unit: "mg/dL" },
 };
 
-export function LabResultEntryModal({ labTest, open, onClose }: LabResultEntryProps) {
+export function LabResultEntryModal({ labTest, open: isOpen, onClose }: LabResultEntryProps) {
   const [resultValue, setResultValue] = useState("");
   const [resultUnit, setResultUnit] = useState("");
   const [isAbnormal, setIsAbnormal] = useState(false);
   const [notes, setNotes] = useState("");
+  const [reportPath, setReportPath] = useState<string | null>(null);
   const qc = useQueryClient();
 
   useEffect(() => {
-    if (open) {
+    if (isOpen) {
       const range = REFERENCE_RANGES[labTest.test_name];
       if (range) {
         setResultUnit(range.unit);
@@ -55,12 +57,17 @@ export function LabResultEntryModal({ labTest, open, onClose }: LabResultEntryPr
   }, [resultValue, labTest.test_name]);
 
   const updateMut = useMutation({
-    mutationFn: () => updateLabResult(labTest.id, {
-      result_value: resultValue,
-      result_unit: resultUnit,
-      is_abnormal: isAbnormal,
-      notes: notes || undefined,
-    }),
+    mutationFn: async () => {
+      await updateLabResult(labTest.id, {
+        result_value: resultValue,
+        result_unit: resultUnit,
+        is_abnormal: isAbnormal,
+        notes: notes || undefined,
+      });
+      if (reportPath) {
+        await uploadLabReport(labTest.id, reportPath);
+      }
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["lab-tests"] });
       toast.success("Lab result saved!");
@@ -70,7 +77,22 @@ export function LabResultEntryModal({ labTest, open, onClose }: LabResultEntryPr
     onError: () => toast.error("Failed to save result"),
   });
 
-  if (!open) return null;
+  const handleFileUpload = async () => {
+    try {
+      const file = await open({
+        multiple: false,
+        filters: [{ name: 'PDF/Images', extensions: ['pdf', 'jpg', 'png'] }]
+      });
+      if (file && typeof file === 'string') {
+        setReportPath(file);
+        toast.info("Report file selected");
+      }
+    } catch (err) {
+      toast.error("File selection failed");
+    }
+  };
+
+  if (!isOpen) return null;
 
   const range = REFERENCE_RANGES[labTest.test_name];
 
@@ -134,8 +156,25 @@ export function LabResultEntryModal({ labTest, open, onClose }: LabResultEntryPr
               onChange={(e) => setNotes(e.target.value)}
               rows={2}
               placeholder="Clinical notes..."
-              className="w-full"
+              className="w-full mb-3"
             />
+          </div>
+
+          <div>
+            <label className="form-label">Report Attachment</label>
+            <button
+              type="button"
+              onClick={handleFileUpload}
+              className="w-full flex items-center justify-center gap-2 border border-dashed border-border p-3 rounded-lg hover:bg-surface2 text-sm text-subtle"
+            >
+              <FileUp size={16} />
+              {reportPath ? "Change Attached File" : "Upload Scan/PDF Report"}
+            </button>
+            {reportPath && (
+              <div className="mt-1 text-[10px] text-accent truncate max-w-full">
+                Selected: {reportPath}
+              </div>
+            )}
           </div>
         </div>
 

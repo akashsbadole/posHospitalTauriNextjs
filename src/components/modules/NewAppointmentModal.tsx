@@ -1,11 +1,11 @@
 "use client";
 import { useState, useEffect } from "react";
-import { X, Search, Video } from "lucide-react";
+import { X, Search, Video, Sparkles } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { createAppointment, getPatients, getDoctors } from "@/lib/tauri";
+import { createAppointment, getPatients, getDoctors, getNextAvailableDoctor } from "@/lib/tauri";
 import { toast } from "sonner";
 import type { Patient, Doctor } from "@/types";
 
@@ -51,7 +51,19 @@ export function NewAppointmentModal({ open, onClose, defaultDate }: Props) {
 
   const selectedPatientId = watch("patient_id");
   const selectedDoctorId = watch("doctor_id");
+  const selectedDept = watch("department");
   const isVideoConsultation = watch("is_video_consultation");
+
+  const autoAssignDoctor = async () => {
+    try {
+      const doc = await getNextAvailableDoctor(selectedDept || "General Medicine");
+      setValue("doctor_id", doc.id);
+      setValue("department", doc.specialization);
+      toast.success(`Auto-assigned ${doc.full_name} (${doc.specialization})`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No available doctor found");
+    }
+  };
 
   useEffect(() => {
     if (open) {
@@ -133,7 +145,16 @@ export function NewAppointmentModal({ open, onClose, defaultDate }: Props) {
             </div>
 
             <div>
-              <label className="form-label">Doctor *</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="form-label mb-0">Doctor *</label>
+                <button
+                  type="button"
+                  onClick={autoAssignDoctor}
+                  className="text-[10px] text-accent flex items-center gap-0.5 hover:underline"
+                >
+                  <Sparkles size={10} /> Auto-Assign
+                </button>
+              </div>
               <select {...register("doctor_id", { valueAsNumber: true })} className="w-full">
                 <option value="">Select Doctor</option>
                 {doctors.map(d => (

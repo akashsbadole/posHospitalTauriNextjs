@@ -91,6 +91,7 @@ pub fn run() {
             // Billing
             commands::get_invoices,
             commands::get_invoice_by_id,
+            commands::get_visit_charges,
             commands::create_invoice,
             commands::record_payment,
             commands::export_invoice_pdf,
@@ -110,6 +111,7 @@ pub fn run() {
             commands::delete_inventory_item,
             // Audit
             commands::get_audit_logs,
+            commands::get_patient_audit_logs,
             // Sync
             commands::sync_to_cloud,
             commands::get_sync_status,
