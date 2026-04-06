@@ -68,32 +68,14 @@ export default function PatientsPage() {
     setCurrentPage(page);
   };
 
-  const handleExportCSV = () => {
-    const headers = ["Patient Code", "Full Name", "DOB", "Gender", "Phone", "Email", "Blood Group", "Department", "Doctor", "Status", "Insurance Provider", "Insurance Number", "Address"];
-    const rows = patients.map(p => [
-      p.patient_code,
-      p.full_name,
-      p.dob,
-      p.gender,
-      p.phone,
-      p.email || "",
-      p.blood_group || "",
-      p.department || "",
-      p.assigned_doctor_name || "",
-      p.status,
-      p.insurance_provider || "",
-      p.insurance_number || "",
-      p.address || ""
-    ]);
-    const csv = [headers.join(","), ...rows.map(r => r.map(c => `"${c}"`).join(","))].join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `patients_${format(new Date(), "yyyy-MM-dd")}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success("Patients exported to CSV!");
+  const handleExportCSV = async () => {
+    try {
+      const { exportPatientsCsv } = await import("@/lib/tauri");
+      const path = await exportPatientsCsv();
+      toast.success(`Patients exported to ${path}`);
+    } catch (e) {
+      toast.error("Failed to export patients: " + e);
+    }
   };
 
   return (

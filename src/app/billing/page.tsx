@@ -40,31 +40,14 @@ export default function BillingPage() {
     !search || i.patient_name?.toLowerCase().includes(search.toLowerCase()) || i.invoice_code.includes(search)
   );
 
-  const handleExportCSV = () => {
-    const headers = ["Invoice Code", "Patient", "Issue Date", "Due Date", "Status", "Subtotal", "Discount", "Tax", "Total", "Paid Amount", "Balance", "Payment Method"];
-    const rows = filtered.map(i => [
-      i.invoice_code,
-      i.patient_name || "",
-      i.issue_date,
-      i.due_date,
-      i.status,
-      i.subtotal.toString(),
-      i.discount.toString(),
-      i.tax.toString(),
-      i.total.toString(),
-      i.paid_amount.toString(),
-      i.balance.toString(),
-      i.payment_method || ""
-    ]);
-    const csv = [headers.join(","), ...rows.map(r => r.map(c => `"${c}"`).join(","))].join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `invoices_${format(new Date(), "yyyy-MM-dd")}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success("Invoices exported to CSV!");
+  const handleExportCSV = async () => {
+    try {
+      const { exportInvoicesCsv } = await import("@/lib/tauri");
+      const path = await exportInvoicesCsv();
+      toast.success(`Invoices exported to ${path}`);
+    } catch (e) {
+      toast.error("Failed to export invoices: " + e);
+    }
   };
 
   const handleDownloadPdf = async (invoiceId: number) => {

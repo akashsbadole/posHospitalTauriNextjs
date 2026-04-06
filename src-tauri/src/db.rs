@@ -56,6 +56,12 @@ fn run_gst_migrations(conn: &rusqlite::Connection) -> Result<()> {
         eprintln!("[MIGRATION] Adding photo_path column to patients table");
         conn.execute("ALTER TABLE patients ADD COLUMN photo_path TEXT", [])?;
     }
+
+    // Add priority column to opd_tokens table if it doesn't exist
+    if !column_exists(conn, "opd_tokens", "priority")? {
+        eprintln!("[MIGRATION] Adding priority column to opd_tokens table");
+        conn.execute("ALTER TABLE opd_tokens ADD COLUMN priority INTEGER NOT NULL DEFAULT 0", [])?;
+    }
     
     Ok(())
 }
@@ -557,6 +563,28 @@ CREATE TABLE IF NOT EXISTS attendance (
     UNIQUE(employee_id, attendance_date)
 );
 
+CREATE TABLE IF NOT EXISTS payroll_months (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    month_year      TEXT NOT NULL UNIQUE,
+    start_date      TEXT NOT NULL,
+    end_date        TEXT NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'Open',
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS payroll_entries (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    payroll_month_id INTEGER NOT NULL REFERENCES payroll_months(id) ON DELETE CASCADE,
+    employee_id     INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+    basic_salary    REAL NOT NULL,
+    allowances      REAL NOT NULL DEFAULT 0,
+    deductions      REAL NOT NULL DEFAULT 0,
+    net_salary      REAL NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'Calculated',
+    processed_at    TEXT,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- ─────────────────────────────────────────
 -- ASSET MANAGEMENT
 -- ─────────────────────────────────────────
@@ -610,6 +638,7 @@ CREATE TABLE IF NOT EXISTS opd_tokens (
     called_at       TEXT,
     started_at      TEXT,
     completed_at    TEXT,
+    priority        INTEGER NOT NULL DEFAULT 0,
     created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -867,4 +896,16 @@ CREATE TABLE IF NOT EXISTS staff_shifts (
 );
 
 CREATE INDEX IF NOT EXISTS idx_shift_date ON staff_shifts(shift_date);
+
+-- ─────────────────────────────────────────
+-- PATIENT FEEDBACK
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS feedback (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    patient_id      INTEGER REFERENCES patients(id) ON DELETE SET NULL,
+    rating          INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5),
+    comments        TEXT NOT NULL,
+    department      TEXT,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
 ";
