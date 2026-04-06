@@ -374,3 +374,13 @@ export interface StaffShift {
   notes?: string;
   created_at: string;
 }
+
+export interface PatientFeedback {
+  id: number;
+  patient_id?: number;
+  patient_name?: string;
+  rating: number;
+  comments: string;
+  department?: string;
+  created_at: string;
+}

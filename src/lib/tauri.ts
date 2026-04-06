@@ -219,3 +219,11 @@ export const createMedicalRecord = (data: Omit<MedicalRecord, "id" | "doctor_nam
 // Staff Shifts
 export const getStaffShifts = (from_date: string, to_date: string) => cmd<StaffShift[]>("get_staff_shifts", { from_date, to_date });
 export const assignStaffShift = (data: { employee_id: number; shift_date: string; shift_type: string; status?: string; notes?: string }) => cmd<StaffShift>("assign_staff_shift", { data });
+
+// Patient Feedback
+export const getFeedback = () => cmd<PatientFeedback[]>("get_feedback");
+export const createFeedback = (data: { patient_id?: number; rating: number; comments: string; department?: string }) => cmd<PatientFeedback>("create_feedback", { data });
+
+// Data Export
+export const exportPatientsCsv = () => cmd<string>("export_patients_csv");
+export const exportInvoicesCsv = () => cmd<string>("export_invoices_csv");

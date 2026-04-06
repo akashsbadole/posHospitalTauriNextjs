@@ -106,6 +106,62 @@ pub fn get_recent_activity(state: State<AppState>, limit: Option<i64>) -> Result
     Ok(logs)
 }
 
+#[tauri::command]
+pub fn get_today_admissions(state: State<AppState>) -> Result<Vec<Patient>, String> {
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    let today = today();
+    let mut stmt = conn.prepare(
+        "SELECT p.id, p.patient_code, p.full_name, p.dob, p.gender, p.phone, p.email,
+                p.blood_group, p.address, p.emergency_contact, p.emergency_phone,
+                p.allergies, p.chronic_conditions, p.department, p.assigned_doctor_id,
+                d.full_name as doctor_name, p.status, p.insurance_provider, p.insurance_number,
+                p.created_at, p.updated_at, p.photo_path
+         FROM patients p
+         LEFT JOIN doctors d ON p.assigned_doctor_id = d.id
+         WHERE p.status = 'Admitted' AND p.updated_at LIKE ?1
+         ORDER BY p.updated_at DESC"
+    ).map_err(|e| e.to_string())?;
+    let patients = stmt.query_map(params![format!("{}%", today)], |r| Ok(Patient {
+        id: r.get(0)?, patient_code: r.get(1)?, full_name: r.get(2)?, dob: r.get(3)?,
+        gender: r.get(4)?, phone: r.get(5)?, email: r.get(6)?, blood_group: r.get(7)?,
+        address: r.get(8)?, emergency_contact: r.get(9)?, emergency_phone: r.get(10)?,
+        allergies: r.get(11)?, chronic_conditions: r.get(12)?, department: r.get(13)?,
+        assigned_doctor_id: r.get(14)?, assigned_doctor_name: r.get(15)?,
+        status: r.get(16)?, insurance_provider: r.get(17)?, insurance_number: r.get(18)?,
+        created_at: r.get(19)?, updated_at: r.get(20)?, photo_path: r.get(21)?,
+    })).map_err(|e| e.to_string())?
+    .filter_map(|r| r.ok()).collect();
+    Ok(patients)
+}
+
+#[tauri::command]
+pub fn get_today_discharges(state: State<AppState>) -> Result<Vec<Patient>, String> {
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    let today = today();
+    let mut stmt = conn.prepare(
+        "SELECT p.id, p.patient_code, p.full_name, p.dob, p.gender, p.phone, p.email,
+                p.blood_group, p.address, p.emergency_contact, p.emergency_phone,
+                p.allergies, p.chronic_conditions, p.department, p.assigned_doctor_id,
+                d.full_name as doctor_name, p.status, p.insurance_provider, p.insurance_number,
+                p.created_at, p.updated_at, p.photo_path
+         FROM patients p
+         LEFT JOIN doctors d ON p.assigned_doctor_id = d.id
+         WHERE p.status = 'Discharged' AND p.updated_at LIKE ?1
+         ORDER BY p.updated_at DESC"
+    ).map_err(|e| e.to_string())?;
+    let patients = stmt.query_map(params![format!("{}%", today)], |r| Ok(Patient {
+        id: r.get(0)?, patient_code: r.get(1)?, full_name: r.get(2)?, dob: r.get(3)?,
+        gender: r.get(4)?, phone: r.get(5)?, email: r.get(6)?, blood_group: r.get(7)?,
+        address: r.get(8)?, emergency_contact: r.get(9)?, emergency_phone: r.get(10)?,
+        allergies: r.get(11)?, chronic_conditions: r.get(12)?, department: r.get(13)?,
+        assigned_doctor_id: r.get(14)?, assigned_doctor_name: r.get(15)?,
+        status: r.get(16)?, insurance_provider: r.get(17)?, insurance_number: r.get(18)?,
+        created_at: r.get(19)?, updated_at: r.get(20)?, photo_path: r.get(21)?,
+    })).map_err(|e| e.to_string())?
+    .filter_map(|r| r.ok()).collect();
+    Ok(patients)
+}
+
 // ─── PATIENTS ─────────────────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -659,6 +715,26 @@ pub fn get_prescription_by_id(state: State<AppState>, id: i64) -> Result<Prescri
 #[tauri::command]
 pub fn create_prescription(state: State<AppState>, data: CreatePrescription, drugs: Vec<CreatePrescriptionDrug>) -> Result<Prescription, String> {
     let mut conn = state.pool.get().map_err(|e| e.to_string())?;
+
+    // Check for allergies
+    let allergies: Option<String> = conn.query_row(
+        "SELECT allergies FROM patients WHERE id = ?1",
+        params![data.patient_id],
+        |r| r.get(0)
+    ).unwrap_or(None);
+
+    if let Some(patient_allergies) = allergies {
+        let allergy_list: Vec<String> = patient_allergies.to_lowercase().split(',').map(|s| s.trim().to_string()).collect();
+        for drug in &drugs {
+            let drug_name = drug.drug_name.to_lowercase();
+            for allergy in &allergy_list {
+                if drug_name.contains(allergy) || allergy.contains(&drug_name) {
+                    return Err(format!("Clinical Alert: Patient is allergic to {}. Prescription blocked.", drug.drug_name));
+                }
+            }
+        }
+    }
+
     let tx = conn.transaction().map_err(|e| e.to_string())?;
 
     let code = new_code("RX");
@@ -2545,4 +2621,225 @@ pub fn assign_staff_shift(state: State<AppState>, data: CreateStaffShift) -> Res
             shift_type: r.get(4)?, status: r.get(5)?, notes: r.get(6)?, created_at: r.get(7)?,
         }),
     ).map_err(|e| e.to_string())
+}
+
+// ─── PAYROLL PROCESSING ──────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn get_payroll_months(state: State<AppState>) -> Result<Vec<PayrollMonth>, String> {
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(
+        "SELECT id, month_year, start_date, end_date, status, created_at FROM payroll_months ORDER BY id DESC"
+    ).map_err(|e| e.to_string())?;
+    let items = stmt.query_map([], |r| Ok(PayrollMonth {
+        id: r.get(0)?, month_year: r.get(1)?, start_date: r.get(2)?, end_date: r.get(3)?,
+        status: r.get(4)?, created_at: r.get(5)?,
+    })).map_err(|e| e.to_string())?
+    .filter_map(|r| r.ok()).collect();
+    Ok(items)
+}
+
+#[tauri::command]
+pub fn create_payroll_month(state: State<AppState>, data: CreatePayrollMonth) -> Result<PayrollMonth, String> {
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO payroll_months (month_year, start_date, end_date) VALUES (?1,?2,?3)",
+        params![data.month_year, data.start_date, data.end_date],
+    ).map_err(|e| e.to_string())?;
+    let id = conn.last_insert_rowid();
+    audit::log(&state.pool, "System", "Payroll month created", "payroll", Some(id), Some(&data.month_year));
+    conn.query_row(
+        "SELECT id, month_year, start_date, end_date, status, created_at FROM payroll_months WHERE id = ?1",
+        params![id],
+        |r| Ok(PayrollMonth { id: r.get(0)?, month_year: r.get(1)?, start_date: r.get(2)?, end_date: r.get(3)?, status: r.get(4)?, created_at: r.get(5)? }),
+    ).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_payroll_entries(state: State<AppState>, month_id: i64) -> Result<Vec<PayrollEntry>, String> {
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(
+        "SELECT p.id, p.payroll_month_id, p.employee_id, e.first_name || ' ' || e.last_name, p.basic_salary, p.allowances, p.deductions, p.net_salary, p.status, p.processed_at, p.created_at
+         FROM payroll_entries p JOIN employees e ON p.employee_id = e.id WHERE p.payroll_month_id = ?1 ORDER BY p.id DESC"
+    ).map_err(|e| e.to_string())?;
+    let items = stmt.query_map(params![month_id], |r| Ok(PayrollEntry {
+        id: r.get(0)?, payroll_month_id: r.get(1)?, employee_id: r.get(2)?, employee_name: r.get(3)?,
+        basic_salary: r.get(4)?, allowances: r.get(5)?, deductions: r.get(6)?, net_salary: r.get(7)?,
+        status: r.get(8)?, processed_at: r.get(9)?, created_at: r.get(10)?,
+    })).map_err(|e| e.to_string())?
+    .filter_map(|r| r.ok()).collect();
+    Ok(items)
+}
+
+#[tauri::command]
+pub fn calculate_payroll(state: State<AppState>, month_id: i64) -> Result<(), String> {
+    let mut conn = state.pool.get().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    // Delete existing entries for this month if any (unless paid)
+    tx.execute("DELETE FROM payroll_entries WHERE payroll_month_id = ?1 AND status != 'Paid'", params![month_id]).map_err(|e| e.to_string())?;
+
+    // Get all active employees
+    let mut stmt = tx.prepare("SELECT id, basic_salary FROM employees WHERE status = 'Active'").map_err(|e| e.to_string())?;
+    let employees: Vec<(i64, f64)> = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
+
+    for (emp_id, basic) in employees {
+        // Basic logic: Net = Basic + Allowances - Deductions
+        let allowances = basic * 0.1;
+        let deductions = basic * 0.05;
+        let net = basic + allowances - deductions;
+
+        tx.execute(
+            "INSERT INTO payroll_entries (payroll_month_id, employee_id, basic_salary, allowances, deductions, net_salary, status)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'Calculated')",
+            params![month_id, emp_id, basic, allowances, deductions, net],
+        ).map_err(|e| e.to_string())?;
+    }
+
+    tx.commit().map_err(|e| e.to_string())?;
+    audit::log(&state.pool, "System", "Payroll calculated", "payroll", Some(month_id), None);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn update_payroll_entry_status(state: State<AppState>, id: i64, status: String) -> Result<(), String> {
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    let processed_at = if status == "Paid" { Some(now()) } else { None };
+    conn.execute(
+        "UPDATE payroll_entries SET status = ?1, processed_at = ?2 WHERE id = ?3",
+        params![status, processed_at, id],
+    ).map_err(|e| e.to_string())?;
+    audit::log(&state.pool, "System", "Payroll entry updated", "payroll_entry", Some(id), Some(&status));
+    Ok(())
+}
+
+// ─── PATIENT FEEDBACK ─────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn get_feedback(state: State<AppState>) -> Result<Vec<PatientFeedback>, String> {
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(
+        "SELECT f.id, f.patient_id, p.full_name, f.rating, f.comments, f.department, f.created_at
+         FROM feedback f LEFT JOIN patients p ON f.patient_id = p.id ORDER BY f.id DESC"
+    ).map_err(|e| e.to_string())?;
+    let items = stmt.query_map([], |r| Ok(PatientFeedback {
+        id: r.get(0)?, patient_id: r.get(1)?,
+        patient_name: r.get::<_, Option<String>>(2).unwrap_or(None),
+        rating: r.get(3)?, comments: r.get(4)?, department: r.get(5)?, created_at: r.get(6)?,
+    })).map_err(|e| e.to_string())?
+    .filter_map(|r| r.ok()).collect();
+    Ok(items)
+}
+
+#[tauri::command]
+pub fn create_feedback(state: State<AppState>, data: CreateFeedback) -> Result<PatientFeedback, String> {
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO feedback (patient_id, rating, comments, department) VALUES (?1,?2,?3,?4)",
+        params![data.patient_id, data.rating, data.comments, data.department],
+    ).map_err(|e| e.to_string())?;
+    let id = conn.last_insert_rowid();
+    audit::log(&state.pool, "System", "Feedback submitted", "feedback", Some(id), None);
+
+    conn.query_row(
+        "SELECT f.id, f.patient_id, p.full_name, f.rating, f.comments, f.department, f.created_at
+         FROM feedback f LEFT JOIN patients p ON f.patient_id = p.id WHERE f.id = ?1",
+        params![id],
+        |r| Ok(PatientFeedback {
+            id: r.get(0)?, patient_id: r.get(1)?,
+            patient_name: r.get::<_, Option<String>>(2).unwrap_or(None),
+            rating: r.get(3)?, comments: r.get(4)?, department: r.get(5)?, created_at: r.get(6)?,
+        }),
+    ).map_err(|e| e.to_string())
+}
+
+// ─── DATA EXPORT ──────────────────────────────────────────────────────────────
+
+#[tauri::command]
+fn escape_csv(val: &str) -> String {
+    if val.contains(',') || val.contains('"') || val.contains('\n') || val.contains('\r') {
+        format!("\"{}\"", val.replace('"', "\"\""))
+    } else {
+        val.to_string()
+    }
+}
+
+#[tauri::command]
+pub fn export_patients_csv(state: State<AppState>) -> Result<String, String> {
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare("SELECT patient_code, full_name, dob, gender, phone, email, blood_group, department, status FROM patients").map_err(|e| e.to_string())?;
+    let rows = stmt.query_map([], |r| {
+        let code: String = r.get(0)?;
+        let name: String = r.get(1)?;
+        let dob: String = r.get(2)?;
+        let gender: String = r.get(3)?;
+        let phone: String = r.get(4)?;
+        let email: Option<String> = r.get(5)?;
+        let bg: String = r.get(6)?;
+        let dept: String = r.get(7)?;
+        let status: String = r.get(8)?;
+
+        Ok(format!("{},{},{},{},{},{},{},{},{}",
+            escape_csv(&code), escape_csv(&name), escape_csv(&dob),
+            escape_csv(&gender), escape_csv(&phone), escape_csv(&email.unwrap_or_default()),
+            escape_csv(&bg), escape_csv(&dept), escape_csv(&status)))
+    }).map_err(|e| e.to_string())?;
+
+    let mut csv = String::from("Code,Name,DOB,Gender,Phone,Email,Blood Group,Department,Status\n");
+    for row in rows {
+        if let Ok(r) = row {
+            csv.push_str(&r);
+            csv.push('\n');
+        }
+    }
+
+    let base_path = if cfg!(windows) {
+        std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string())
+    } else {
+        std::env::var("HOME").map(|h| format!("{}/.local/share", h)).unwrap_or_else(|_| ".".to_string())
+    };
+
+    let dir_path = format!("{}/MediCore/exports", base_path);
+    let path = format!("{}/patients_export.csv", dir_path);
+    std::fs::create_dir_all(&dir_path).map_err(|e| e.to_string())?;
+    std::fs::write(&path, csv).map_err(|e| e.to_string())?;
+
+    Ok(path)
+}
+
+#[tauri::command]
+pub fn export_invoices_csv(state: State<AppState>) -> Result<String, String> {
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare("SELECT invoice_code, issue_date, total, paid_amount, balance, status FROM invoices").map_err(|e| e.to_string())?;
+    let rows = stmt.query_map([], |r| {
+        let code: String = r.get(0)?;
+        let date: String = r.get(1)?;
+        let total: f64 = r.get(2)?;
+        let paid: f64 = r.get(3)?;
+        let balance: f64 = r.get(4)?;
+        let status: String = r.get(5)?;
+        Ok(format!("{},{},{},{},{},{}",
+            escape_csv(&code), escape_csv(&date), total, paid, balance, escape_csv(&status)))
+    }).map_err(|e| e.to_string())?;
+
+    let mut csv = String::from("Invoice #,Date,Total,Paid,Balance,Status\n");
+    for row in rows {
+        if let Ok(r) = row {
+            csv.push_str(&r);
+            csv.push('\n');
+        }
+    }
+
+    let base_path = if cfg!(windows) {
+        std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string())
+    } else {
+        std::env::var("HOME").map(|h| format!("{}/.local/share", h)).unwrap_or_else(|_| ".".to_string())
+    };
+
+    let dir_path = format!("{}/MediCore/exports", base_path);
+    let path = format!("{}/invoices_export.csv", dir_path);
+    std::fs::create_dir_all(&dir_path).map_err(|e| e.to_string())?;
+    std::fs::write(&path, csv).map_err(|e| e.to_string())?;
+
+    Ok(path)
 }

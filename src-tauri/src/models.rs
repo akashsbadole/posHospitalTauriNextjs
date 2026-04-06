@@ -619,6 +619,47 @@ pub struct UpdateSmsSettings {
 // PAYROLL & HR
 // ─────────────────────────────────────────
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PayrollMonth {
+    pub id: i64,
+    pub month_year: String,
+    pub start_date: String,
+    pub end_date: String,
+    pub status: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreatePayrollMonth {
+    pub month_year: String,
+    pub start_date: String,
+    pub end_date: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PayrollEntry {
+    pub id: i64,
+    pub payroll_month_id: i64,
+    pub employee_id: i64,
+    pub employee_name: Option<String>,
+    pub basic_salary: f64,
+    pub allowances: f64,
+    pub deductions: f64,
+    pub net_salary: f64,
+    pub status: String,
+    pub processed_at: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreatePayrollEntry {
+    pub payroll_month_id: i64,
+    pub employee_id: i64,
+    pub basic_salary: f64,
+    pub allowances: Option<f64>,
+    pub deductions: Option<f64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Employee {
     pub id: i64,
     pub employee_code: String,
@@ -1296,4 +1337,26 @@ pub struct UpdateRolePermission {
     pub can_create: bool,
     pub can_edit: bool,
     pub can_delete: bool,
+}
+
+// ─── PATIENT FEEDBACK ─────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PatientFeedback {
+    pub id: i64,
+    pub patient_id: Option<i64>,
+    pub patient_name: Option<String>,
+    pub rating: i64,
+    pub comments: String,
+    pub department: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateFeedback {
+    pub patient_id: Option<i64>,
+    pub patient_name: Option<String>,
+    pub rating: i64,
+    pub comments: String,
+    pub department: Option<String>,
 }

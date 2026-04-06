@@ -36,6 +36,8 @@ pub fn run() {
             // Dashboard
             commands::get_dashboard_stats,
             commands::get_recent_activity,
+            commands::get_today_admissions,
+            commands::get_today_discharges,
             // Patients
             commands::get_patients,
             commands::get_patient_by_id,
@@ -140,6 +142,11 @@ pub fn run() {
             commands::approve_leave_request,
             commands::get_attendance,
             commands::mark_attendance,
+            commands::get_payroll_months,
+            commands::create_payroll_month,
+            commands::get_payroll_entries,
+            commands::calculate_payroll,
+            commands::update_payroll_entry_status,
             // Asset Management
             commands::get_asset_categories,
             commands::create_asset_category,
@@ -193,6 +200,12 @@ pub fn run() {
             // Staff Shifts
             commands::get_staff_shifts,
             commands::assign_staff_shift,
+            // Patient Feedback
+            commands::get_feedback,
+            commands::create_feedback,
+            // Data Export
+            commands::export_patients_csv,
+            commands::export_invoices_csv,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
