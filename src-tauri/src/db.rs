@@ -86,10 +86,28 @@ fn run_gst_migrations(conn: &rusqlite::Connection) -> Result<()> {
         }
     }
 
+    // Add inventory_item_id to prescription_drugs table
+    if !column_exists(conn, "prescription_drugs", "inventory_item_id")? {
+        eprintln!("[MIGRATION] Adding inventory_item_id column to prescription_drugs table");
+        conn.execute("ALTER TABLE prescription_drugs ADD COLUMN inventory_item_id INTEGER REFERENCES inventory(id)", [])?;
+    }
+
     // Add is_deleted to patients table for soft delete
     if !column_exists(conn, "patients", "is_deleted")? {
         eprintln!("[MIGRATION] Adding is_deleted column to patients table");
         conn.execute("ALTER TABLE patients ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0", [])?;
+    }
+
+    // Add cost column to lab_tests table if it doesn't exist
+    if !column_exists(conn, "lab_tests", "cost")? {
+        eprintln!("[MIGRATION] Adding cost column to lab_tests table");
+        conn.execute("ALTER TABLE lab_tests ADD COLUMN cost REAL NOT NULL DEFAULT 0", [])?;
+    }
+
+    // Add base_charge column to wards table if it doesn't exist
+    if !column_exists(conn, "wards", "base_charge")? {
+        eprintln!("[MIGRATION] Adding base_charge column to wards table");
+        conn.execute("ALTER TABLE wards ADD COLUMN base_charge REAL NOT NULL DEFAULT 500", [])?;
     }
     
     Ok(())
@@ -246,6 +264,7 @@ CREATE TABLE IF NOT EXISTS prescriptions (
 CREATE TABLE IF NOT EXISTS prescription_drugs (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     prescription_id     INTEGER NOT NULL REFERENCES prescriptions(id) ON DELETE CASCADE,
+    inventory_item_id   INTEGER REFERENCES inventory(id),
     drug_name           TEXT NOT NULL,
     dosage              TEXT NOT NULL,
     frequency           TEXT NOT NULL,
@@ -274,7 +293,8 @@ CREATE TABLE IF NOT EXISTS lab_tests (
     is_abnormal     INTEGER NOT NULL DEFAULT 0,
     notes           TEXT,
     report_path     TEXT,
-    visit_id        INTEGER
+    visit_id        INTEGER,
+    cost            REAL NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_lab_status  ON lab_tests(status);
@@ -284,12 +304,13 @@ CREATE INDEX IF NOT EXISTS idx_lab_patient ON lab_tests(patient_id);
 -- WARDS & BEDS
 -- ─────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS wards (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    ward_name   TEXT NOT NULL,
-    ward_code   TEXT NOT NULL UNIQUE,
-    ward_type   TEXT NOT NULL DEFAULT 'General',
-    total_beds  INTEGER NOT NULL DEFAULT 0,
-    department  TEXT NOT NULL
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    ward_name       TEXT NOT NULL,
+    ward_code       TEXT NOT NULL UNIQUE,
+    ward_type       TEXT NOT NULL DEFAULT 'General',
+    total_beds      INTEGER NOT NULL DEFAULT 0,
+    department      TEXT NOT NULL,
+    base_charge     REAL NOT NULL DEFAULT 500
 );
 
 CREATE TABLE IF NOT EXISTS beds (

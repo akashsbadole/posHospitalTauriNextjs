@@ -22,6 +22,7 @@ const NAV = [
     { href:"/prescriptions", icon:Pill,         label:"Prescriptions" },
     { href:"/lab",           icon:FlaskConical, label:"Lab & Diagnostics",   badge:5 },
     { href:"/discharge",     icon:FileText,     label:"Discharge Summary" },
+    { href:"/feedback",      icon:MessageSquare,label:"Patient Feedback" },
     { href:"/opd-queue",    icon:MonitorPlay,  label:"OPD Queue" },
     { href:"/emergency",     icon:AlertTriangle,label:"Emergency / ER" },
     { href:"/ot",            icon:Scissors,     label:"Operation Theatre" },

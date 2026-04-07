@@ -5,7 +5,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { createInvoice, getPatients, getPatientVisits } from "@/lib/tauri";
+import { createInvoice, getPatients, getPatientVisits, getVisitCharges } from "@/lib/tauri";
 import { toast } from "sonner";
 import type { Patient, Visit } from "@/types";
 
@@ -59,6 +59,7 @@ export function NewInvoiceModal({ open, onClose }: Props) {
   });
 
   const selectedPatientId = watch("patient_id");
+  const selectedVisitId = watch("visit_id");
 
   useEffect(() => {
     if (open) {
@@ -73,6 +74,23 @@ export function NewInvoiceModal({ open, onClose }: Props) {
       setPatientVisits([]);
     }
   }, [selectedPatientId]);
+
+  useEffect(() => {
+    if (selectedVisitId) {
+      getVisitCharges(selectedVisitId).then(data => {
+        const newItems = data.items.map(item => ({
+          id: Math.random().toString(36).substr(2, 9),
+          description: item.description,
+          category: item.category,
+          quantity: item.quantity,
+          unit_price: item.quantity > 0 ? item.amount / item.quantity : item.amount,
+        }));
+        setItems(newItems);
+      }).catch(err => {
+        console.error("Failed to fetch visit charges:", err);
+      });
+    }
+  }, [selectedVisitId]);
 
   const filteredPatients = patients.filter(p => 
     p.full_name.toLowerCase().includes(patientSearch.toLowerCase()) ||

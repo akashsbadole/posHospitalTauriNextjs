@@ -160,6 +160,8 @@ pub fn run() {
             commands::get_opd_tokens,
             commands::create_opd_token,
             commands::update_token_status,
+            commands::reassign_token,
+            commands::skip_token,
             // Discharge Summary
             commands::get_discharge_summaries,
             commands::create_discharge_summary,
@@ -211,6 +213,7 @@ pub fn run() {
             commands::create_visit,
             commands::update_visit_diagnosis,
             commands::update_visit_status,
+            commands::get_visit_charges,
             // Data Export
             commands::export_patients_csv,
             commands::export_invoices_csv,

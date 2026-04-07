@@ -13,6 +13,7 @@ const schema = z.object({
   ward_type: z.string().min(1, "Ward type is required"),
   department: z.string().min(1, "Department is required"),
   total_beds: z.number().min(1, "At least 1 bed required").max(100, "Maximum 100 beds"),
+  base_charge: z.number().min(0, "Charge must be positive"),
 });
 
 type F = z.infer<typeof schema>;
@@ -34,6 +35,7 @@ export function NewWardModal({ open, onClose }: Props) {
       ward_type: "General",
       department: "General Medicine",
       total_beds: 10,
+      base_charge: 500,
     },
   });
 
@@ -83,11 +85,18 @@ export function NewWardModal({ open, onClose }: Props) {
               </div>
             </div>
 
-            <div>
-              <label className="form-label">Number of Beds *</label>
-              <input type="number" {...register("total_beds", { valueAsNumber: true })} className="w-full" min={1} max={100} />
-              {errors.total_beds && <p className="form-error">{errors.total_beds.message}</p>}
-              <p className="text-[11px] text-muted mt-1">Beds will be automatically generated (001, 002, ...)</p>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="form-label">Number of Beds *</label>
+                <input type="number" {...register("total_beds", { valueAsNumber: true })} className="w-full" min={1} max={100} />
+                {errors.total_beds && <p className="form-error">{errors.total_beds.message}</p>}
+              </div>
+              <div>
+                <label className="form-label">Base Charge / Day (₹) *</label>
+                <input type="number" {...register("base_charge", { valueAsNumber: true })} className="w-full" />
+                {errors.base_charge && <p className="form-error">{errors.base_charge.message}</p>}
+              </div>
+              <p className="col-span-2 text-[11px] text-muted -mt-2">Beds will be automatically generated (001, 002, ...)</p>
             </div>
           </div>
         </form>

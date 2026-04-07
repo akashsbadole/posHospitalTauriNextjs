@@ -22,6 +22,7 @@ type F = z.infer<typeof schema>;
 
 interface DrugEntry {
   id: string;
+  inventory_item_id?: number;
   drug_name: string;
   dosage: string;
   frequency: string;
@@ -39,7 +40,7 @@ interface Props {
 const ROUTES = ["Oral", "IV", "IM", "Topical", "Inhaled"];
 const FREQUENCIES = ["Once daily", "Twice daily", "Three times daily", "Four times daily", "Every 8 hours", "Every 12 hours", "As needed"];
 
-export function NewPrescriptionModal({ open, onClose }: Props) {
+export function NewPrescriptionModal({ open, onClose, initialPatientId, initialVisitId, initialDiagnosis }: Props & { initialPatientId?: number, initialVisitId?: number, initialDiagnosis?: string }) {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
@@ -54,6 +55,9 @@ export function NewPrescriptionModal({ open, onClose }: Props) {
     resolver: zodResolver(schema),
     defaultValues: {
       valid_until: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+      patient_id: initialPatientId,
+      visit_id: initialVisitId,
+      diagnosis: initialDiagnosis,
     },
   });
 
@@ -61,11 +65,20 @@ export function NewPrescriptionModal({ open, onClose }: Props) {
 
   useEffect(() => {
     if (open) {
-      getPatients().then(setPatients);
+      getPatients().then(data => {
+        setPatients(data);
+        if (initialPatientId) {
+          const p = data.find(pat => pat.id === initialPatientId);
+          if (p) {
+            setPatientSearch(p.full_name);
+            if (p.assigned_doctor_id) setValue("doctor_id", p.assigned_doctor_id);
+          }
+        }
+      });
       getDoctors().then(setDoctors);
       getInventory().then(setInventory);
     }
-  }, [open]);
+  }, [open, initialPatientId, setValue]);
 
   useEffect(() => {
     if (selectedPatientId) {
@@ -114,6 +127,7 @@ export function NewPrescriptionModal({ open, onClose }: Props) {
       if (validDrugs.length === 0) throw new Error("At least one drug is required");
       
       const drugsData = validDrugs.map(d => ({
+        inventory_item_id: d.inventory_item_id,
         drug_name: d.drug_name,
         dosage: d.dosage,
         frequency: d.frequency,
@@ -254,7 +268,11 @@ export function NewPrescriptionModal({ open, onClose }: Props) {
                                 <button
                                   key={i.id}
                                   type="button"
-                                  onClick={() => { updateDrug(drug.id, "drug_name", i.name); setDrugDropdownId(null); }}
+                                  onClick={() => {
+                                    updateDrug(drug.id, "drug_name", i.name);
+                                    updateDrug(drug.id, "inventory_item_id", i.id);
+                                    setDrugDropdownId(null);
+                                  }}
                                   className="w-full px-3 py-2 text-left text-xs hover:bg-surface3 text-white"
                                 >
                                   {i.name}

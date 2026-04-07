@@ -44,7 +44,7 @@ export interface Appointment {
 export interface Prescription {
   id: number; rx_code: string; patient_id: number; patient_name?: string;
   doctor_id: number; doctor_name?: string; issue_date: string; valid_until: string;
-  status: "Active" | "Expired" | "Cancelled"; drugs: PrescriptionDrug[];
+  status: "Active" | "Expired" | "Cancelled" | "Issued"; drugs: PrescriptionDrug[];
   diagnosis?: string; notes?: string; visit_id?: number; created_at: string;
 }
 
@@ -249,7 +249,7 @@ export interface AssetMaintenance {
 export interface OpdToken {
   id: number; token_number: number; patient_id: number; patient_name?: string;
   doctor_id: number; doctor_name?: string; department: string; queue_date: string;
-  status: "Waiting" | "Called" | "InProgress" | "Completed" | "Cancelled";
+  status: "Waiting" | "Called" | "InProgress" | "Completed" | "Cancelled" | "Skipped";
   wait_time: number; called_at?: string; started_at?: string; completed_at?: string;
   priority: number; visit_id?: number; created_at: string;
 }
