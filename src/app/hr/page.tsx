@@ -13,6 +13,7 @@ export default function HrPage() {
   const [showAddLeave, setShowAddLeave] = useState(false);
   const [showAddPayrollMonth, setShowAddPayrollMonth] = useState(false);
   const [selectedMonthId, setSelectedMonthId] = useState<number | null>(null);
+  const [viewPayslip, setViewPayslip] = useState<any>(null);
   const [shiftDate, setShiftDate] = useState(new Date().toISOString().split("T")[0]);
 
   const qc = useQueryClient();
@@ -271,9 +272,12 @@ export default function HrPage() {
                             <td className="font-bold">₹{entry.net_salary.toLocaleString()}</td>
                             <td><span className={`badge ${entry.status === "Paid" ? "badge-green" : "badge-yellow"}`}>{entry.status}</span></td>
                             <td>
-                              {entry.status === "Pending" && (
-                                <button onClick={() => updatePayrollStatusMut.mutate({ id: entry.id, status: "Paid" })} className="text-accent hover:underline text-xs">Mark Paid</button>
-                              )}
+                              <div className="flex gap-2">
+                                <button onClick={() => setViewPayslip(entry)} className="text-accent hover:underline text-xs">View Payslip</button>
+                                {entry.status === "Pending" && (
+                                  <button onClick={() => updatePayrollStatusMut.mutate({ id: entry.id, status: "Paid" })} className="text-accent hover:underline text-xs">Mark Paid</button>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -401,6 +405,60 @@ export default function HrPage() {
                 <button type="submit" className="btn btn-primary">Add Employee</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {viewPayslip && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center anim-fade-in">
+          <div className="bg-surface border border-border2 rounded-2xl w-[500px] shadow-card">
+            <div className="p-8 space-y-6">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h2 className="text-2xl font-display font-black text-white">PAYSLIP</h2>
+                  <p className="text-xs text-subtle uppercase tracking-widest">{payrollMonths.find(m => m.id === selectedMonthId)?.month_year}</p>
+                </div>
+                <div className="text-right">
+                  <div className="text-sm font-bold text-accent">MediCore HMS</div>
+                  <div className="text-[10px] text-subtle">Hospital Payroll System</div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 py-4 border-y border-border/50">
+                <div>
+                  <p className="text-[10px] text-subtle uppercase">Employee Name</p>
+                  <p className="text-sm font-bold text-white">{viewPayslip.employee_name}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-subtle uppercase">Status</p>
+                  <span className={`badge ${viewPayslip.status === "Paid" ? "badge-green" : "badge-yellow"}`}>{viewPayslip.status}</span>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted">Basic Salary</span>
+                  <span className="text-white">₹{viewPayslip.basic_salary.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted">Allowances</span>
+                  <span className="text-success">+₹{viewPayslip.allowances.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted">Deductions</span>
+                  <span className="text-danger">-₹{viewPayslip.deductions.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between text-lg font-display font-bold border-t border-border pt-3 mt-3">
+                  <span className="text-white">Net Salary</span>
+                  <span className="text-accent">₹{viewPayslip.net_salary.toLocaleString()}</span>
+                </div>
+              </div>
+
+              <div className="pt-4 flex gap-3">
+                <button onClick={() => window.print()} className="btn btn-ghost flex-1 text-xs">Print PDF</button>
+                <button onClick={() => setViewPayslip(null)} className="btn btn-primary flex-1 text-xs">Close</button>
+              </div>
+            </div>
           </div>
         </div>
       )}

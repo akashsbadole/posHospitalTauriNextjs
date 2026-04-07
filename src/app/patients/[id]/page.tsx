@@ -2,8 +2,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import { getPatientById, getPatientVitals, getAppointments, getPrescriptions, getLabTests, getInvoices, getMedicalRecords, createMedicalRecord, getDoctors, getPatientVisits, createVisit, createOpdToken, issuePrescription, updateVisitDiagnosis, updateVisitStatus } from "@/lib/tauri";
-import { ArrowLeft, Edit, Calendar, Pill, FlaskConical, FileText, Activity, User, Plus, X, Download, Clock } from "lucide-react";
+import { ArrowLeft, Edit, Calendar, Pill, FlaskConical, FileText, Activity, User, Plus, X, Download, Clock, Upload } from "lucide-react";
 import { useState } from "react";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { EditPatientModal } from "@/components/modules/EditPatientModal";
 import { NewPrescriptionModal } from "@/components/modules/NewPrescriptionModal";
 import { NewLabTestModal } from "@/components/modules/NewLabTestModal";
@@ -21,6 +22,7 @@ export default function PatientDetailPage() {
   const [tab, setTab] = useState<Tab>("Overview");
   const [showEdit, setShowEdit] = useState(false);
   const [showAddRecord, setShowAddRecord] = useState(false);
+  const [attachmentPath, setAttachmentPath] = useState<string>("");
   const [showNewPrescription, setShowNewPrescription] = useState(false);
   const [showNewLabTest, setShowNewLabTest] = useState(false);
   const [showNewAppointment, setShowNewAppointment] = useState(false);
@@ -79,6 +81,7 @@ export default function PatientDetailPage() {
       qc.invalidateQueries({ queryKey: ["patient-medical-records", patientId] });
       toast.success("Medical record added!");
       setShowAddRecord(false);
+      setAttachmentPath("");
     },
     onError: () => toast.error("Failed to add medical record"),
   });
@@ -139,6 +142,20 @@ export default function PatientDetailPage() {
     },
     onError: (err: Error) => toast.error(err.message || "Failed to start visit")
   });
+
+  const handlePickFile = async () => {
+    try {
+      const selected = await openDialog({
+        multiple: false,
+        filters: [{ name: 'Medical Documents', extensions: ['pdf', 'jpg', 'png', 'doc', 'docx'] }]
+      });
+      if (selected && typeof selected === 'string') {
+        setAttachmentPath(selected);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   if (loadingPatient) {
     return <div className="p-8 text-center text-muted">Loading patient...</div>;
@@ -467,14 +484,22 @@ export default function PatientDetailPage() {
                 record_type: (f.elements.namedItem("record_type") as HTMLSelectElement).value as any,
                 title: (f.elements.namedItem("title") as HTMLInputElement).value,
                 description: (f.elements.namedItem("description") as HTMLTextAreaElement).value || undefined,
-                attachment_path: (f.elements.namedItem("attachment_path") as HTMLInputElement).value || undefined,
+                attachment_path: attachmentPath || undefined,
               });
             }} className="p-6 space-y-4">
               <div><label className="form-label">Doctor *</label><select name="doctor_id" required className="select"><option value="">Select Doctor</option>{doctors.map(d => <option key={d.id} value={d.id}>{d.full_name}</option>)}</select></div>
               <div><label className="form-label">Record Type *</label><select name="record_type" required className="select"><option value="Clinical Note">Clinical Note</option><option value="Diagnostic Report">Diagnostic Report</option><option value="Prescription Archive">Prescription Archive</option><option value="Imaging">Imaging</option><option value="Other">Other</option></select></div>
               <div><label className="form-label">Title *</label><input name="title" required className="input" placeholder="e.g., Post-op recovery note" /></div>
               <div><label className="form-label">Description</label><textarea name="description" className="textarea" rows={3} /></div>
-              <div><label className="form-label">Attachment Path (Local)</label><input name="attachment_path" className="input" placeholder="e.g., C:/Records/report.pdf" /></div>
+              <div>
+                <label className="form-label">Attachment</label>
+                <div className="flex gap-2">
+                  <input readOnly value={attachmentPath} className="input flex-1 text-[11px]" placeholder="No file selected" />
+                  <button type="button" onClick={handlePickFile} className="btn btn-ghost btn-sm border border-border">
+                    <Upload size={14} />
+                  </button>
+                </div>
+              </div>
               <div className="flex gap-3 justify-end pt-4">
                 <button type="button" onClick={() => setShowAddRecord(false)} className="btn btn-ghost">Cancel</button>
                 <button type="submit" className="btn btn-primary" disabled={createRecordMut.isPending}>Add Record</button>

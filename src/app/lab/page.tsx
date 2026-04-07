@@ -1,8 +1,9 @@
 "use client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getLabTests, updateLabStatus } from "@/lib/tauri";
+import { getLabTests, updateLabStatus, uploadLabReport } from "@/lib/tauri";
 import { useState } from "react";
-import { Plus, Search, Upload, Eye, CheckCircle } from "lucide-react";
+import { Plus, Search, Upload, Eye, CheckCircle, FileUp } from "lucide-react";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { toast } from "sonner";
 import type { LabTest } from "@/types";
 import { NewLabTestModal } from "@/components/modules/NewLabTestModal";
@@ -29,6 +30,26 @@ export default function LabPage() {
     mutationFn:({id,status}:{id:number;status:LabTest["status"]})=>updateLabStatus(id,status),
     onSuccess:()=>{qc.invalidateQueries({queryKey:["lab-tests"]});toast.success("Status updated");},
   });
+
+  const uploadMut = useMutation({
+    mutationFn: ({ id, path }: { id: number; path: string }) => uploadLabReport(id, path),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["lab-tests"] }); toast.success("Report uploaded!"); },
+    onError: () => toast.error("Upload failed"),
+  });
+
+  const handleUpload = async (id: number) => {
+    try {
+      const selected = await openDialog({
+        multiple: false,
+        filters: [{ name: 'Lab Reports', extensions: ['pdf', 'jpg', 'png'] }]
+      });
+      if (selected && typeof selected === 'string') {
+        uploadMut.mutate({ id, path: selected });
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const filtered = tests.filter(t=>!search||t.patient_name?.toLowerCase().includes(search.toLowerCase())||t.test_name.toLowerCase().includes(search.toLowerCase()));
 
@@ -110,6 +131,7 @@ export default function LabPage() {
                             title="Advance Status"><CheckCircle size={12} /></button>
                         )}
                         <button className="icon-btn hover:!text-accent" title="Enter Result" onClick={() => setEntryTest({ id: t.id, test_name: t.test_name, test_category: t.test_category, patient_name: t.patient_name })}><Upload size={12} /></button>
+                        <button className="icon-btn hover:!text-purple" title="Upload PDF Report" onClick={() => handleUpload(t.id)}><FileUp size={12} /></button>
                       </div>
                     </td>
                   </tr>
