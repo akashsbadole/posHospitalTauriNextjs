@@ -1,13 +1,14 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getOpdTokens, createOpdToken, updateTokenStatus, getDoctors, getPatients, createVisit } from "@/lib/tauri";
+import { getOpdTokens, createOpdToken, updateTokenStatus, getDoctors, getPatients, createVisit, reassignToken, skipToken } from "@/lib/tauri";
 import { listen } from "@tauri-apps/api/event";
 import { toast } from "sonner";
-import { MonitorPlay, Plus, Play, CheckCircle, Phone, User, Activity } from "lucide-react";
+import { MonitorPlay, Plus, Play, CheckCircle, Phone, User, Activity, ArrowRightLeft, FastForward, RefreshCw, X } from "lucide-react";
 
 export default function OpdQueuePage() {
   const [showAddToken, setShowAddToken] = useState(false);
+  const [reassignId, setReassignId] = useState<number | null>(null);
   const qc = useQueryClient();
   const today = new Date().toISOString().split("T")[0];
 
@@ -57,10 +58,29 @@ export default function OpdQueuePage() {
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["opd-tokens"] });
       qc.invalidateQueries({ queryKey: ["patient-visits"] });
-      toast.success("Status updated!");
+      toast.success(`Status updated to ${data.status}!`);
       if (data.status === "Called") announce(data);
     },
     onError: (err: Error) => toast.error(err.message || "Failed to update status")
+  });
+
+  const reassignMut = useMutation({
+    mutationFn: ({ id, doctorId }: { id: number; doctorId: number }) => reassignToken(id, doctorId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["opd-tokens"] });
+      toast.success("Doctor reassigned!");
+      setReassignId(null);
+    },
+    onError: (err: Error) => toast.error(err.message || "Failed to reassign")
+  });
+
+  const skipMut = useMutation({
+    mutationFn: (id: number) => skipToken(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["opd-tokens"] });
+      toast.success("Token skipped");
+    },
+    onError: (err: Error) => toast.error(err.message || "Failed to skip")
   });
 
   const waiting = tokens.filter(t => t.status === "Waiting").length;
@@ -121,10 +141,17 @@ export default function OpdQueuePage() {
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className={`badge ${token.status === "Waiting" ? "badge-gray" : token.status === "Called" ? "badge-yellow" : token.status === "InProgress" ? "badge-blue" : "badge-green"}`}>{token.status}</span>
-                        {token.status === "Waiting" && <button onClick={() => updateStatusMut.mutate({ id: token.id, status: "Called" })} className="btn btn-sm btn-ghost"><Phone size={14} /></button>}
+                        <span className={`badge ${token.status === "Waiting" ? "badge-gray" : token.status === "Called" ? "badge-yellow" : token.status === "InProgress" ? "badge-blue" : token.status === "Completed" ? "badge-green" : "badge-red"}`}>{token.status}</span>
+                        {token.status === "Waiting" && (
+                          <>
+                            <button onClick={() => updateStatusMut.mutate({ id: token.id, status: "Called" })} title="Call Patient" className="btn btn-sm btn-ghost text-accent"><Phone size={14} /></button>
+                            <button onClick={() => setReassignId(token.id)} title="Reassign Doctor" className="btn btn-sm btn-ghost"><ArrowRightLeft size={14} /></button>
+                            <button onClick={() => skipMut.mutate(token.id)} title="Skip Patient" className="btn btn-sm btn-ghost text-danger"><FastForward size={14} /></button>
+                          </>
+                        )}
                         {token.status === "Called" && <button onClick={() => updateStatusMut.mutate({ id: token.id, status: "InProgress" })} className="btn btn-sm btn-primary"><Play size={12} /></button>}
                         {token.status === "InProgress" && <button onClick={() => updateStatusMut.mutate({ id: token.id, status: "Completed" })} className="btn btn-sm btn-success"><CheckCircle size={12} /></button>}
+                        {token.status === "Skipped" && <button onClick={() => updateStatusMut.mutate({ id: token.id, status: "Waiting" })} className="btn btn-sm btn-ghost"><RefreshCw size={12} /></button>}
                       </div>
                     </div>
                   ))}
@@ -155,6 +182,41 @@ export default function OpdQueuePage() {
           </div>
         </div>
       </div>
+
+      {reassignId && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="bg-surface border border-border2 rounded-2xl w-[400px] p-6 space-y-4 shadow-card">
+            <div className="flex justify-between items-center">
+              <h2 className="font-display font-bold text-lg">Reassign Doctor</h2>
+              <button onClick={() => setReassignId(null)} className="text-subtle hover:text-white"><X size={18} /></button>
+            </div>
+            <form onSubmit={e => {
+              e.preventDefault();
+              const f = e.target as HTMLFormElement;
+              const docId = parseInt((f.elements.namedItem("new_doctor_id") as HTMLSelectElement).value);
+              if (docId) reassignMut.mutate({ id: reassignId, doctorId: docId });
+            }}>
+              <div className="space-y-4">
+                <div>
+                  <label className="form-label">New Doctor *</label>
+                  <select name="new_doctor_id" required className="select">
+                    <option value="">Select Doctor</option>
+                    {doctors.map(d => (
+                      <option key={d.id} value={d.id}>{d.full_name} - {d.specialization}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex gap-3 justify-end pt-2">
+                  <button type="button" onClick={() => setReassignId(null)} className="btn btn-ghost">Cancel</button>
+                  <button type="submit" disabled={reassignMut.isPending} className="btn btn-primary">
+                    {reassignMut.isPending ? "Reassigning..." : "Confirm Reassignment"}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {showAddToken && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center">

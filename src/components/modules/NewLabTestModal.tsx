@@ -14,6 +14,7 @@ const schema = z.object({
   doctor_id: z.number().min(1, "Doctor is required"),
   test_name: z.string().min(1, "Test name is required"),
   test_category: z.string().min(1, "Category is required"),
+  cost: z.number().min(0, "Cost must be positive"),
   notes: z.string().optional(),
   visit_id: z.number().optional().nullable(),
 });
@@ -34,7 +35,7 @@ const COMMON_TESTS: Record<string, string[]> = {
   Radiology: ["X-Ray Chest", "X-Ray Abdomen", "Ultrasound", "CT Scan", "MRI"],
 };
 
-export function NewLabTestModal({ open, onClose }: Props) {
+export function NewLabTestModal({ open, onClose, initialPatientId, initialVisitId }: Props & { initialPatientId?: number, initialVisitId?: number }) {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [patientSearch, setPatientSearch] = useState("");
@@ -45,6 +46,9 @@ export function NewLabTestModal({ open, onClose }: Props) {
     resolver: zodResolver(schema),
     defaultValues: {
       test_category: "Hematology",
+      cost: 0,
+      patient_id: initialPatientId,
+      visit_id: initialVisitId,
     },
   });
 
@@ -53,10 +57,19 @@ export function NewLabTestModal({ open, onClose }: Props) {
 
   useEffect(() => {
     if (open) {
-      getPatients().then(setPatients);
+      getPatients().then(data => {
+        setPatients(data);
+        if (initialPatientId) {
+          const p = data.find(pat => pat.id === initialPatientId);
+          if (p) {
+            setPatientSearch(p.full_name);
+            if (p.assigned_doctor_id) setValue("doctor_id", p.assigned_doctor_id);
+          }
+        }
+      });
       getDoctors().then(setDoctors);
     }
-  }, [open]);
+  }, [open, initialPatientId, setValue]);
 
   useEffect(() => {
     if (selectedPatientId) {
@@ -148,9 +161,17 @@ export function NewLabTestModal({ open, onClose }: Props) {
               </select>
             </div>
 
+            <div className="grid grid-cols-3 gap-4">
+              <div className="col-span-2">
+                <label className="form-label">Test Name *</label>
+                <input {...register("test_name")} placeholder="Enter test name" className="w-full" list="test-suggestions" />
+              </div>
+              <div>
+                <label className="form-label">Cost (₹) *</label>
+                <input type="number" {...register("cost", { valueAsNumber: true })} className="w-full" />
+              </div>
+            </div>
             <div>
-              <label className="form-label">Test Name *</label>
-              <input {...register("test_name")} placeholder="Enter test name" className="w-full" list="test-suggestions" />
               <datalist id="test-suggestions">
                 {(COMMON_TESTS[selectedCategory] || []).map(t => (
                   <option key={t} value={t} />

@@ -1,10 +1,13 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
-import { getPatientById, getPatientVitals, getAppointments, getPrescriptions, getLabTests, getInvoices, getMedicalRecords, createMedicalRecord, getDoctors, getPatientVisits, createVisit, createOpdToken, issuePrescription, updateVisitDiagnosis } from "@/lib/tauri";
+import { getPatientById, getPatientVitals, getAppointments, getPrescriptions, getLabTests, getInvoices, getMedicalRecords, createMedicalRecord, getDoctors, getPatientVisits, createVisit, createOpdToken, issuePrescription, updateVisitDiagnosis, updateVisitStatus } from "@/lib/tauri";
 import { ArrowLeft, Edit, Calendar, Pill, FlaskConical, FileText, Activity, User, Plus, X, Download, Clock } from "lucide-react";
 import { useState } from "react";
 import { EditPatientModal } from "@/components/modules/EditPatientModal";
+import { NewPrescriptionModal } from "@/components/modules/NewPrescriptionModal";
+import { NewLabTestModal } from "@/components/modules/NewLabTestModal";
+import { NewAppointmentModal } from "@/components/modules/NewAppointmentModal";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -18,6 +21,9 @@ export default function PatientDetailPage() {
   const [tab, setTab] = useState<Tab>("Overview");
   const [showEdit, setShowEdit] = useState(false);
   const [showAddRecord, setShowAddRecord] = useState(false);
+  const [showNewPrescription, setShowNewPrescription] = useState(false);
+  const [showNewLabTest, setShowNewLabTest] = useState(false);
+  const [showNewAppointment, setShowNewAppointment] = useState(false);
   const patientId = Number(params.id);
 
   const { data: patient, isLoading: loadingPatient } = useQuery({
@@ -97,6 +103,15 @@ export default function PatientDetailPage() {
     onError: (err: Error) => toast.error(err.message || "Failed to update diagnosis")
   });
 
+  const updateVisitStatusMut = useMutation({
+    mutationFn: ({ id, status }: { id: number; status: any }) => updateVisitStatus(id, status),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["patient-visits", patientId] });
+      toast.success("Visit status updated!");
+    },
+    onError: (err: Error) => toast.error(err.message || "Failed to update visit status")
+  });
+
   const startVisitMut = useMutation({
     mutationFn: async (data: { doctor_id: number; reason: string; visit_type: string }) => {
       const visit = await createVisit({
@@ -157,8 +172,15 @@ export default function PatientDetailPage() {
                const diag = prompt("Enter diagnosis:", activeVisit.diagnosis || "");
                if (diag !== null) updateDiagnosisMut.mutate({ id: activeVisit.id, diagnosis: diag });
              }} className="btn btn-xs btn-ghost text-accent border-accent/20">Set Diagnosis</button>
-             <button onClick={() => setTab("Medical Records")} className="btn btn-xs btn-ghost text-accent border-accent/20">Add Clinical Note</button>
-             <button onClick={() => setTab("Lab Tests")} className="btn btn-xs btn-ghost text-accent border-accent/20">Order Test</button>
+             <button onClick={() => { setTab("Medical Records"); setShowAddRecord(true); }} className="btn btn-xs btn-ghost text-accent border-accent/20">Add Note</button>
+             <button onClick={() => { setTab("Prescriptions"); setShowNewPrescription(true); }} className="btn btn-xs btn-ghost text-accent border-accent/20">Prescribe</button>
+             <button onClick={() => { setTab("Lab Tests"); setShowNewLabTest(true); }} className="btn btn-xs btn-ghost text-accent border-accent/20">Order Test</button>
+             <button onClick={() => { setTab("Appointments"); setShowNewAppointment(true); }} className="btn btn-xs btn-ghost text-accent border-accent/20">Follow-up</button>
+             <button onClick={() => {
+               if(confirm("Complete consultation and send to billing?")) {
+                 updateVisitStatusMut.mutate({ id: activeVisit.id, status: "BILL_PENDING" });
+               }
+             }} className="btn btn-xs btn-success ml-2">Complete</button>
           </div>
         </div>
       )}
@@ -467,6 +489,33 @@ export default function PatientDetailPage() {
           open={showEdit}
           patient={patient}
           onClose={() => setShowEdit(false)}
+        />
+      )}
+
+      {showNewPrescription && (
+        <NewPrescriptionModal
+          open={showNewPrescription}
+          initialPatientId={patientId}
+          initialVisitId={activeVisit?.id}
+          initialDiagnosis={activeVisit?.diagnosis}
+          onClose={() => setShowNewPrescription(false)}
+        />
+      )}
+
+      {showNewLabTest && (
+        <NewLabTestModal
+          open={showNewLabTest}
+          initialPatientId={patientId}
+          initialVisitId={activeVisit?.id}
+          onClose={() => setShowNewLabTest(false)}
+        />
+      )}
+
+      {showNewAppointment && (
+        <NewAppointmentModal
+          open={showNewAppointment}
+          initialPatientId={patientId}
+          onClose={() => setShowNewAppointment(false)}
         />
       )}
     </div>

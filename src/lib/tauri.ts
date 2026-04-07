@@ -5,10 +5,10 @@ import type {
   DashboardStats, AuditLog, Staff, VitalSigns, User, Setting,
   PatientStatus, AppointmentStatus, BedStatus, InvoiceStatus, ClaimStatus,
   TaxSetting, PaymentBatch, PaymentBatchItem, MessageTemplate, MessageLog,
-  Employee, LeaveRequest, Attendance, AssetCategory, Asset, AssetMaintenance,
-  OpdToken, DischargeSummary, DischargeMedication,
+  Employee, LeaveRequest, Attendance, PayrollMonth, PayrollEntry, AssetCategory, Asset, AssetMaintenance,
+  OpdToken, DischargeSummary, DischargeMedication, MedicalRecord, StaffShift,
   OtSchedule, OtTheatre, EmergencyCase, BloodDonor, BloodInventory, BloodRequest,
-  Ambulance, AmbulanceCall, ExpenseCategory, Expense, Notification, RolePermission,
+  Ambulance, AmbulanceCall, ExpenseCategory, Expense, Notification, RolePermission, PatientFeedback,
   Visit, VisitStatus,
 } from "@/types";
 
@@ -165,8 +165,10 @@ export const createAssetMaintenance  = (data: { asset_id: number; maintenance_ty
 
 // OPD Queue
 export const getOpdTokens           = (date?: string, status?: string) => cmd<OpdToken[]>("get_opd_tokens", { date, status });
-export const createOpdToken         = (data: { patient_id: number; doctor_id: number; department: string; queue_date: string; priority?: number }) => cmd<OpdToken>("create_opd_token", { data });
+export const createOpdToken         = (data: { patient_id: number; doctor_id: number; department: string; queue_date: string; priority?: number; visit_id?: number }) => cmd<OpdToken>("create_opd_token", { data });
 export const updateTokenStatus       = (id: number, new_status: string) => cmd<OpdToken>("update_token_status", { id, new_status });
+export const reassignToken          = (token_id: number, new_doctor_id: number) => cmd<OpdToken>("reassign_token", { token_id, new_doctor_id });
+export const skipToken              = (token_id: number) => cmd<OpdToken>("skip_token", { token_id });
 
 // Discharge Summary
 export const getDischargeSummaries   = (patient_id?: number) => cmd<DischargeSummary[]>("get_discharge_summaries", { patient_id });
@@ -233,6 +235,7 @@ export const getVisitById = (id: number) => cmd<Visit>("get_visit_by_id", { id }
 export const createVisit = (data: { patient_id: number; doctor_id: number; department: string; visit_type?: string; reason?: string; diagnosis?: string; status?: string }) => cmd<Visit>("create_visit", { data });
 export const updateVisitDiagnosis = (id: number, diagnosis: string) => cmd<void>("update_visit_diagnosis", { id, diagnosis });
 export const updateVisitStatus = (id: number, status: VisitStatus) => cmd<void>("update_visit_status", { id, status });
+export const getVisitCharges = (visit_id: number) => cmd<{ items: { description: string; category: string; amount: number; quantity: number }[]; total: number }>("get_visit_charges", { visit_id });
 
 // Data Export
 export const exportPatientsCsv = () => cmd<string>("export_patients_csv");

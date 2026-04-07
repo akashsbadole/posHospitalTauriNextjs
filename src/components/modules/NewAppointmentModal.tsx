@@ -32,7 +32,7 @@ interface Props {
 const TIME_SLOTS = ["08:00","08:30","09:00","09:30","10:00","10:30","11:00","11:30","12:00","14:00","14:30","15:00","15:30","16:00","16:30","17:00","17:30"];
 const APPOINTMENT_TYPES = ["General Checkup", "Follow-up", "Consultation", "Emergency", "Post-Op", "Lab Review", "ECG", "X-Ray Review", "MRI Consultation", "Vaccination"];
 
-export function NewAppointmentModal({ open, onClose, defaultDate }: Props) {
+export function NewAppointmentModal({ open, onClose, defaultDate, initialPatientId }: Props & { initialPatientId?: number }) {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [patientSearch, setPatientSearch] = useState("");
@@ -46,6 +46,7 @@ export function NewAppointmentModal({ open, onClose, defaultDate }: Props) {
       appointment_time: "09:00",
       type: "General Checkup",
       is_video_consultation: false,
+      patient_id: initialPatientId,
     },
   });
 
@@ -55,10 +56,19 @@ export function NewAppointmentModal({ open, onClose, defaultDate }: Props) {
 
   useEffect(() => {
     if (open) {
-      getPatients().then(setPatients);
+      getPatients().then(data => {
+        setPatients(data);
+        if (initialPatientId) {
+          const p = data.find(pat => pat.id === initialPatientId);
+          if (p) {
+            setPatientSearch(p.full_name);
+            if (p.assigned_doctor_id) setValue("doctor_id", p.assigned_doctor_id);
+          }
+        }
+      });
       getDoctors().then(setDoctors);
     }
-  }, [open]);
+  }, [open, initialPatientId, setValue]);
 
   const filteredPatients = patients.filter(p => 
     p.full_name.toLowerCase().includes(patientSearch.toLowerCase()) ||

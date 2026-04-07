@@ -175,6 +175,7 @@ pub struct Prescription {
 pub struct PrescriptionDrug {
     pub id: i64,
     pub prescription_id: i64,
+    pub inventory_item_id: Option<i64>,
     pub drug_name: String,
     pub dosage: String,
     pub frequency: String,
@@ -198,6 +199,7 @@ pub struct CreatePrescription {
 
 #[derive(Debug, Deserialize)]
 pub struct CreatePrescriptionDrug {
+    pub inventory_item_id: Option<i64>,
     pub drug_name: String,
     pub dosage: String,
     pub frequency: String,
@@ -226,6 +228,7 @@ pub struct LabTest {
     pub is_abnormal: bool,
     pub notes: Option<String>,
     pub report_path: Option<String>,
+    pub cost: f64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -238,6 +241,7 @@ pub struct CreateLabTest {
     pub status: Option<String>,
     pub notes: Option<String>,
     pub visit_id: Option<i64>,
+    pub cost: f64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -256,6 +260,7 @@ pub struct Ward {
     pub ward_type: String,
     pub total_beds: i64,
     pub department: String,
+    pub base_charge: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -462,6 +467,20 @@ pub struct SyncStatus {
 pub struct SyncResult {
     pub synced: i64,
     pub errors: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct VisitCharge {
+    pub description: String,
+    pub category: String,
+    pub amount: f64,
+    pub quantity: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct VisitChargesSummary {
+    pub items: Vec<VisitCharge>,
+    pub total: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
