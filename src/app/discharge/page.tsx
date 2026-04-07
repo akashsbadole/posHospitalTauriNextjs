@@ -1,9 +1,10 @@
 "use client";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getDischargeSummaries, createDischargeSummary, getPatients, getDoctors } from "@/lib/tauri";
+import { getDischargeSummaries, createDischargeSummary, getPatients, getDoctors, exportDischargeSummaryPdf, openFile, sendMessage } from "@/lib/tauri";
 import { toast } from "sonner";
-import { FileText, Plus, Printer, User } from "lucide-react";
+import { FileText, Plus, Printer, User, Share2, Mail } from "lucide-react";
+import type { DischargeSummary } from "@/types";
 
 export default function DischargePage() {
   const [showAdd, setShowAdd] = useState(false);
@@ -17,6 +18,36 @@ export default function DischargePage() {
 
   const total = summaries.length;
   const regular = summaries.filter(s => s.discharge_type === "Regular").length;
+
+  const handleDownloadPdf = async (id: number) => {
+    try {
+      const path = await exportDischargeSummaryPdf(id);
+      toast.success(`Discharge Summary PDF saved to ${path}`);
+      await openFile(path);
+    } catch (e) {
+      toast.error("Failed to export summary: " + e);
+    }
+  };
+
+  const handleShare = async (ds: DischargeSummary, channel: "WhatsApp" | "Email") => {
+    const contact = channel === "WhatsApp" ? ds.patient_phone : ds.patient_email;
+    if (!contact) {
+      toast.error(`Patient ${channel === "WhatsApp" ? "phone number" : "email"} not found`);
+      return;
+    }
+    try {
+      await sendMessage({
+        patient_id: ds.patient_id,
+        phone: ds.patient_phone || "",
+        email: ds.patient_email || "",
+        message_type: channel,
+        message_body: `Dear ${ds.patient_name}, your discharge summary ${ds.summary_code} is ready.`,
+      });
+      toast.success(`Summary shared via ${channel}!`);
+    } catch (e) {
+      toast.error("Failed to share: " + e);
+    }
+  };
 
   return (
     <div>
@@ -54,7 +85,11 @@ export default function DischargePage() {
                   <td className="max-w-[200px] truncate text-muted">{s.diagnosis}</td>
                   <td>{s.doctor_name}</td>
                   <td>
-                    <button className="btn btn-sm btn-ghost"><Printer size={14} /></button>
+                    <div className="flex gap-1">
+                      <button onClick={() => handleDownloadPdf(s.id)} title="Download / Print PDF" className="icon-btn hover:!text-accent"><Printer size={14} /></button>
+                      <button onClick={() => handleShare(s, "WhatsApp")} title="Share via WhatsApp" className="icon-btn hover:!text-green-500"><Share2 size={14} /></button>
+                      <button onClick={() => handleShare(s, "Email")} title="Share via Email" className="icon-btn hover:!text-blue-400"><Mail size={14} /></button>
+                    </div>
                   </td>
                 </tr>
               ))}

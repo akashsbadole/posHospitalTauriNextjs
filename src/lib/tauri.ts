@@ -19,6 +19,7 @@ const cmd = <T>(command: string, args?: Record<string, unknown>) =>
 export const getDashboardStats       = ()               => cmd<DashboardStats>("get_dashboard_stats");
 export const getTodayAdmissions      = ()               => cmd<Patient[]>("get_today_admissions");
 export const getTodayDischarges      = ()               => cmd<Patient[]>("get_today_discharges");
+export const openFile                = (path: string)   => cmd<void>("open_file", { path });
 export const getRecentActivity       = (limit = 20)     => cmd<AuditLog[]>("get_recent_activity", { limit });
 
 // Patients
@@ -62,6 +63,7 @@ export const createPrescription      = (
 export const issuePrescription = (id: number) => invoke<void>("issue_prescription", { id });
 export const cancelPrescription      = (id: number)     => cmd<void>("cancel_prescription", { id });
 export const refillPrescription      = (id: number, drug_id: number) => cmd<void>("refill_prescription", { id, drug_id });
+export const exportPrescriptionPdf   = (prescription_id: number) => cmd<string>("export_prescription_pdf", { prescription_id });
 export const getDueRefillRx          = ()               => cmd<Prescription[]>("get_prescriptions_due_refill");
 
 // Lab
@@ -176,6 +178,7 @@ export const createDischargeSummary = (
   data: Omit<DischargeSummary,"id"|"summary_code"|"patient_name"|"doctor_name"|"medications"|"created_at">,
   medications: { medication: string; dosage: string; duration: string; instructions?: string }[]
 ) => cmd<DischargeSummary>("create_discharge_summary", { data, medications });
+export const exportDischargeSummaryPdf = (id: number) => cmd<string>("export_discharge_summary_pdf", { id });
 
 // Operation Theatre
 export const getOtSchedules = (date?: string, status?: string) => cmd<OtSchedule[]>("get_ot_schedules", { date, status });

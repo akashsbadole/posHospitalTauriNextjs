@@ -43,6 +43,7 @@ export interface Appointment {
 
 export interface Prescription {
   id: number; rx_code: string; patient_id: number; patient_name?: string;
+  patient_phone?: string; patient_email?: string;
   doctor_id: number; doctor_name?: string; issue_date: string; valid_until: string;
   status: "Active" | "Expired" | "Cancelled" | "Issued"; drugs: PrescriptionDrug[];
   diagnosis?: string; notes?: string; visit_id?: number; created_at: string;
@@ -57,6 +58,7 @@ export interface PrescriptionDrug {
 
 export interface LabTest {
   id: number; lab_code: string; patient_id: number; patient_name?: string;
+  patient_phone?: string; patient_email?: string;
   doctor_id: number; doctor_name?: string; test_name: string; test_category: LabCategory;
   ordered_date: string; result_date?: string;
   status: "Ordered" | "Sample Collected" | "Processing" | "Ready" | "Reviewed";
@@ -78,6 +80,7 @@ export interface Bed {
 
 export interface Invoice {
   id: number; invoice_code: string; patient_id: number; patient_name?: string;
+  patient_phone?: string; patient_email?: string;
   issue_date: string; due_date: string; status: InvoiceStatus; items: InvoiceItem[];
   subtotal: number; discount: number; tax: number;
   cgst: number; sgst: number; igst: number;
@@ -258,6 +261,7 @@ export interface OpdToken {
 // Discharge Summary
 export interface DischargeSummary {
   id: number; summary_code: string; patient_id: number; patient_name?: string;
+  patient_phone?: string; patient_email?: string;
   admission_date: string; discharge_date: string;
   discharge_type: "Regular" | "LAMA" | "DOR" | "Transfer";
   diagnosis: string; procedure_done?: string;

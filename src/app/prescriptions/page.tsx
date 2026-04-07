@@ -2,10 +2,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { getPrescriptions } from "@/lib/tauri";
 import { useState } from "react";
-import { Plus, Search, Eye, Printer } from "lucide-react";
+import { Plus, Search, Eye, Printer, FileText, Share2 } from "lucide-react";
 import { format, differenceInDays } from "date-fns";
 import { NewPrescriptionModal } from "@/components/modules/NewPrescriptionModal";
 import { PrescriptionPrintView } from "@/components/modules/PrescriptionPrintView";
+import { exportPrescriptionPdf, openFile, sendMessage } from "@/lib/tauri";
+import { toast } from "sonner";
+import type { Prescription } from "@/types";
 
 export default function PrescriptionsPage() {
   const [search, setSearch] = useState("");
@@ -17,6 +20,37 @@ export default function PrescriptionsPage() {
   const filtered = rxList.filter(rx =>
     !search || rx.patient_name?.toLowerCase().includes(search.toLowerCase()) || rx.rx_code.includes(search)
   );
+
+  const handleDownloadPdf = async (id: number) => {
+    try {
+      const path = await exportPrescriptionPdf(id);
+      toast.success(`Prescription PDF saved to ${path}`);
+      await openFile(path);
+    } catch (e) {
+      toast.error("Failed to export prescription: " + e);
+    }
+  };
+
+  const handleShare = async (rx: Prescription, channel: "WhatsApp" | "Email") => {
+    const contact = channel === "WhatsApp" ? rx.patient_phone : rx.patient_email;
+    if (!contact) {
+      toast.error(`Patient ${channel === "WhatsApp" ? "phone number" : "email"} not found`);
+      return;
+    }
+
+    try {
+      await sendMessage({
+        patient_id: rx.patient_id,
+        phone: rx.patient_phone || "",
+        email: rx.patient_email || "",
+        message_type: channel,
+        message_body: `Dear ${rx.patient_name}, your prescription ${rx.rx_code} has been issued. You can view it here: [Digital Link]`,
+      });
+      toast.success(`Prescription shared via ${channel}!`);
+    } catch (e) {
+      toast.error("Failed to share: " + e);
+    }
+  };
 
   return (
     <div>
@@ -78,8 +112,11 @@ export default function PrescriptionsPage() {
                       <td><span className={`badge ${rx.status==="Active"?"badge-green":rx.status==="Expired"?"badge-gray":"badge-red"}`}>{rx.status}</span></td>
                       <td>
                         <div className="flex gap-1.5">
-                          <button onClick={() => setViewRx(rx.id)} className="icon-btn"><Eye size={12} /></button>
-                          <button onClick={() => setPrintRx(rx.id)} className="icon-btn hover:!text-accent"><Printer size={12} /></button>
+                          <button onClick={() => setViewRx(rx.id)} title="View Detail" className="icon-btn"><Eye size={12} /></button>
+                          <button onClick={() => handleDownloadPdf(rx.id)} title="Download / Print PDF" className="icon-btn hover:!text-accent"><FileText size={12} /></button>
+                          <button onClick={() => setPrintRx(rx.id)} title="Web Print" className="icon-btn hover:!text-success"><Printer size={12} /></button>
+                          <button onClick={() => handleShare(rx, "WhatsApp")} title="Share via WhatsApp" className="icon-btn hover:!text-green-500"><Share2 size={12} /></button>
+                          <button onClick={() => handleShare(rx, "Email")} title="Share via Email" className="icon-btn hover:!text-blue"><Mail size={12} /></button>
                         </div>
                       </td>
                     </tr>
