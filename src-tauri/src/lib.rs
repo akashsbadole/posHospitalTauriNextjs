@@ -214,9 +214,14 @@ pub fn run() {
             commands::update_visit_diagnosis,
             commands::update_visit_status,
             commands::get_visit_charges,
+            // Support Tickets
+            commands::get_support_tickets,
+            commands::create_support_ticket,
+            commands::update_support_ticket,
             // Data Export
             commands::export_patients_csv,
             commands::export_invoices_csv,
+            commands::export_gst_csv,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

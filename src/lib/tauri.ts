@@ -237,6 +237,12 @@ export const updateVisitDiagnosis = (id: number, diagnosis: string) => cmd<void>
 export const updateVisitStatus = (id: number, status: VisitStatus) => cmd<void>("update_visit_status", { id, status });
 export const getVisitCharges = (visit_id: number) => cmd<{ items: { description: string; category: string; amount: number; quantity: number }[]; total: number }>("get_visit_charges", { visit_id });
 
+// Support Tickets
+export const getSupportTickets = (status?: string) => cmd<SupportTicket[]>("get_support_tickets", { status });
+export const createSupportTicket = (data: { patient_id?: number; subject: string; description: string; category: string; priority?: string; assigned_to: number }) => cmd<SupportTicket>("create_support_ticket", { data });
+export const updateSupportTicket = (id: number, data: { status?: string; assigned_to?: number; priority?: string }) => cmd<void>("update_support_ticket", { id, data });
+
 // Data Export
 export const exportPatientsCsv = () => cmd<string>("export_patients_csv");
 export const exportInvoicesCsv = () => cmd<string>("export_invoices_csv");
+export const exportGstCsv = (from: string, to: string) => cmd<string>("export_gst_csv", { from, to });

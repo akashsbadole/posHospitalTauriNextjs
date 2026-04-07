@@ -50,6 +50,19 @@ export default function BillingPage() {
     }
   };
 
+  const handleExportGst = async () => {
+    try {
+      const { exportGstCsv } = await import("@/lib/tauri");
+      // Default to current month
+      const from = format(new Date().setDate(1), "yyyy-MM-dd");
+      const to = format(new Date(), "yyyy-MM-dd");
+      const path = await exportGstCsv(from, to);
+      toast.success(`GST Report exported to ${path}`);
+    } catch (e) {
+      toast.error("Failed to export GST: " + e);
+    }
+  };
+
   const handleDownloadPdf = async (invoiceId: number) => {
     try {
       const path = await exportInvoicePdf(invoiceId);
@@ -64,6 +77,7 @@ export default function BillingPage() {
       <div className="page-header">
         <div><h1 className="page-title">Billing & Invoices</h1><p className="page-subtitle">{invoices.length} total invoices</p></div>
         <div className="flex gap-2.5">
+          <button onClick={handleExportGst} className="btn btn-ghost !text-purple hover:!bg-purple/10 border-purple/20"><FileText size={13} />GST Report</button>
           <button onClick={handleExportCSV} className="btn btn-ghost"><Download size={13} />Export</button>
           <button onClick={() => setShowNewModal(true)} className="btn btn-primary"><Plus size={14} />New Invoice</button>
         </div>

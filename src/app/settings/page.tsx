@@ -21,6 +21,7 @@ const ICONS: Record<Section, React.ReactNode> = {
 const DEFAULT_SETTINGS: Record<string, string> = {
   hospital_name: "MediCore General Hospital",
   hospital_reg: "MH/2020/4821",
+  hospital_gstin: "27AAACM4821M1Z5",
   hospital_address: "42 Health Colony, Sector 12",
   hospital_city: "Mumbai, Maharashtra",
   hospital_phone: "+91 22 4821 0000",
@@ -148,6 +149,7 @@ export default function SettingsPage() {
               <div className="col-span-2"><h3 className="text-[15px] font-display font-bold mb-1">Hospital Information</h3><p className="text-[12px] text-muted">Basic details about your facility</p></div>
               <div><label className="form-label">Hospital Name</label><input value={settings.hospital_name} onChange={e => updateSetting("hospital_name", e.target.value)} /></div>
               <div><label className="form-label">Registration Number</label><input value={settings.hospital_reg} onChange={e => updateSetting("hospital_reg", e.target.value)} /></div>
+              <div><label className="form-label">Hospital GSTIN</label><input value={settings.hospital_gstin} onChange={e => updateSetting("hospital_gstin", e.target.value)} /></div>
               <div><label className="form-label">Address Line 1</label><input value={settings.hospital_address} onChange={e => updateSetting("hospital_address", e.target.value)} /></div>
               <div><label className="form-label">City / State</label><input value={settings.hospital_city} onChange={e => updateSetting("hospital_city", e.target.value)} /></div>
               <div><label className="form-label">Phone</label><input value={settings.hospital_phone} onChange={e => updateSetting("hospital_phone", e.target.value)} /></div>

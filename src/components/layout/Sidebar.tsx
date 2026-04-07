@@ -8,6 +8,7 @@ import {
   BarChart3, FileText, Settings, Activity, ChevronLeft,
   QrCode, MessageSquare, Wallet, Briefcase, MonitorPlay,
   Scissors, AlertTriangle, Droplet, Car, DollarSign, Bell,
+  LifeBuoy,
 } from "lucide-react";
 import { useAppStore } from "@/store";
 
@@ -44,6 +45,7 @@ const NAV = [
   { section: "HR & Payroll", items: [
     { href:"/hr",          icon:Briefcase,    label:"Payroll & HR" },
     { href:"/messages",    icon:MessageSquare, label:"SMS & WhatsApp" },
+    { href:"/support",     icon:LifeBuoy,      label:"Support Center" },
   ]},
   { section: "System", items: [
     { href:"/audit",    icon:FileText, label:"Audit Logs" },

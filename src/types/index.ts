@@ -89,6 +89,7 @@ export interface Invoice {
 export interface InvoiceItem {
   id: number; invoice_id: number; description: string;
   category: "Consultation" | "Lab" | "Surgery" | "Pharmacy" | "Ward" | "Radiology" | "Procedure";
+  hsn_code?: string;
   quantity: number; unit_price: number; total: number;
 }
 
@@ -166,12 +167,12 @@ export interface PaymentBatchItem {
 
 // WhatsApp & SMS
 export interface MessageTemplate {
-  id: number; template_name: string; message_type: "SMS" | "WhatsApp" | "Both";
+  id: number; template_name: string; message_type: "SMS" | "WhatsApp" | "Email" | "Both" | "All";
   template_body: string; is_active: boolean; created_at: string;
 }
 
 export interface MessageLog {
-  id: number; patient_id?: number; patient_name?: string; phone: string;
+  id: number; patient_id?: number; patient_name?: string; phone: string; email?: string;
   message_type: string; template_name?: string; message_body: string;
   status: string; sent_at?: string; error_message?: string; created_at: string;
 }
@@ -403,4 +404,20 @@ export interface PatientFeedback {
   comments: string;
   department?: string;
   created_at: string;
+}
+
+export interface SupportTicket {
+  id: number;
+  ticket_code: string;
+  patient_id?: number;
+  patient_name?: string;
+  subject: string;
+  description: string;
+  category: string;
+  priority: "Low" | "Medium" | "High" | "Urgent";
+  status: "Open" | "InProgress" | "Resolved" | "Closed";
+  assigned_to?: number;
+  assigned_user_name?: string;
+  created_at: string;
+  updated_at: string;
 }

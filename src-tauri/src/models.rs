@@ -308,6 +308,7 @@ pub struct InvoiceItem {
     pub invoice_id: i64,
     pub description: String,
     pub category: String,
+    pub hsn_code: Option<String>,
     pub quantity: i64,
     pub unit_price: f64,
     pub total: f64,
@@ -332,6 +333,7 @@ pub struct CreateInvoice {
 pub struct CreateInvoiceItem {
     pub description: String,
     pub category: String,
+    pub hsn_code: Option<String>,
     pub quantity: i64,
     pub unit_price: f64,
 }
@@ -602,6 +604,7 @@ pub struct MessageLog {
     pub patient_id: Option<i64>,
     pub patient_name: Option<String>,
     pub phone: String,
+    pub email: Option<String>,
     pub message_type: String,
     pub template_name: Option<String>,
     pub message_body: String,
@@ -615,6 +618,7 @@ pub struct MessageLog {
 pub struct SendMessage {
     pub patient_id: Option<i64>,
     pub phone: String,
+    pub email: Option<String>,
     pub message_type: String,
     pub template_name: Option<String>,
     pub message_body: String,
@@ -1416,4 +1420,40 @@ pub struct CreateVisit {
     pub reason: Option<String>,
     pub diagnosis: Option<String>,
     pub status: Option<String>,
+}
+
+// ─── SUPPORT TICKETS ─────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SupportTicket {
+    pub id: i64,
+    pub ticket_code: String,
+    pub patient_id: Option<i64>,
+    pub patient_name: Option<String>,
+    pub subject: String,
+    pub description: String,
+    pub category: String,
+    pub priority: String,
+    pub status: String,
+    pub assigned_to: Option<i64>,
+    pub assigned_user_name: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateSupportTicket {
+    pub patient_id: Option<i64>,
+    pub subject: String,
+    pub description: String,
+    pub category: String,
+    pub priority: Option<String>,
+    pub assigned_to: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateSupportTicket {
+    pub status: Option<String>,
+    pub assigned_to: Option<i64>,
+    pub priority: Option<String>,
 }

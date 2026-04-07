@@ -27,6 +27,7 @@ interface InvoiceItem {
   id: string;
   description: string;
   category: string;
+  hsn_code: string;
   quantity: number;
   unit_price: number;
 }
@@ -104,6 +105,7 @@ export function NewInvoiceModal({ open, onClose }: Props) {
       id: Math.random().toString(36).substr(2, 9),
       description: "",
       category: "Consultation",
+      hsn_code: "",
       quantity: 1,
       unit_price: 0,
     }]);
@@ -133,6 +135,7 @@ export function NewInvoiceModal({ open, onClose }: Props) {
       const itemsData = validItems.map(i => ({
         description: i.description,
         category: i.category,
+        hsn_code: i.hsn_code || undefined,
         quantity: i.quantity,
         unit_price: i.unit_price,
         total: i.quantity * i.unit_price,
@@ -241,7 +244,7 @@ export function NewInvoiceModal({ open, onClose }: Props) {
             ) : (
               <div className="space-y-2">
                 <div className="grid grid-cols-12 gap-2 text-xs text-subtle px-2">
-                  <div className="col-span-4">Description</div>
+                  <div className="col-span-4">Description / HSN</div>
                   <div className="col-span-2">Category</div>
                   <div className="col-span-2">Qty</div>
                   <div className="col-span-2">Price</div>
@@ -250,12 +253,20 @@ export function NewInvoiceModal({ open, onClose }: Props) {
                 </div>
                 {items.map(item => (
                   <div key={item.id} className="grid grid-cols-12 gap-2 items-center bg-surface2 border border-border rounded-lg p-2">
-                    <input
-                      value={item.description}
-                      onChange={(e) => updateItem(item.id, "description", e.target.value)}
-                      placeholder="Item description"
-                      className="col-span-4 bg-transparent text-sm"
-                    />
+                    <div className="col-span-4 space-y-1">
+                      <input
+                        value={item.description}
+                        onChange={(e) => updateItem(item.id, "description", e.target.value)}
+                        placeholder="Item description"
+                        className="w-full bg-transparent text-sm"
+                      />
+                      <input
+                        value={item.hsn_code}
+                        onChange={(e) => updateItem(item.id, "hsn_code", e.target.value)}
+                        placeholder="HSN Code"
+                        className="w-full bg-transparent text-[10px] text-muted uppercase"
+                      />
+                    </div>
                     <select
                       value={item.category}
                       onChange={(e) => updateItem(item.id, "category", e.target.value)}

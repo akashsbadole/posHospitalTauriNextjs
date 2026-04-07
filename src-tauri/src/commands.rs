@@ -1080,10 +1080,11 @@ pub fn create_ward_with_beds(state: State<AppState>, data: Ward) -> Result<Ward,
 // ─── BILLING ──────────────────────────────────────────────────────────────────
 
 fn load_invoice_items(conn: &rusqlite::Connection, invoice_id: i64) -> Vec<InvoiceItem> {
-    let mut stmt = conn.prepare("SELECT id, invoice_id, description, category, quantity, unit_price, total FROM invoice_items WHERE invoice_id = ?1").unwrap();
+    let mut stmt = conn.prepare("SELECT id, invoice_id, description, category, quantity, unit_price, total, hsn_code FROM invoice_items WHERE invoice_id = ?1").unwrap();
     stmt.query_map(params![invoice_id], |r| Ok(InvoiceItem {
         id: r.get(0)?, invoice_id: r.get(1)?, description: r.get(2)?, category: r.get(3)?,
         quantity: r.get(4)?, unit_price: r.get(5)?, total: r.get(6)?,
+        hsn_code: r.get(7)?,
     })).unwrap().filter_map(|r| r.ok()).collect()
 }
 
@@ -1155,8 +1156,8 @@ pub fn create_invoice(state: State<AppState>, data: CreateInvoice, items: Vec<Cr
     }
     for item in &items {
         let item_total = item.quantity as f64 * item.unit_price;
-        tx.execute("INSERT INTO invoice_items (invoice_id, description, category, quantity, unit_price, total) VALUES (?1,?2,?3,?4,?5,?6)",
-            params![inv_id, item.description, item.category, item.quantity, item.unit_price, item_total]).map_err(|e| e.to_string())?;
+        tx.execute("INSERT INTO invoice_items (invoice_id, description, category, quantity, unit_price, total, hsn_code) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+            params![inv_id, item.description, item.category, item.quantity, item.unit_price, item_total, item.hsn_code]).map_err(|e| e.to_string())?;
     }
 
     tx.commit().map_err(|e| e.to_string())?;
@@ -1232,6 +1233,7 @@ pub fn export_invoice_pdf(state: State<AppState>, invoice_id: i64) -> Result<Str
     let h_addr: String = conn.query_row("SELECT value FROM settings WHERE key = 'hospital_address'", [], |r| r.get(0)).unwrap_or_else(|_| "".to_string());
     let h_city: String = conn.query_row("SELECT value FROM settings WHERE key = 'hospital_city'", [], |r| r.get(0)).unwrap_or_else(|_| "".to_string());
     let h_phone: String = conn.query_row("SELECT value FROM settings WHERE key = 'hospital_phone'", [], |r| r.get(0)).unwrap_or_else(|_| "".to_string());
+    let h_gst: String = conn.query_row("SELECT value FROM settings WHERE key = 'hospital_gstin'", [], |r| r.get(0)).unwrap_or_else(|_| "".to_string());
 
     let (doc, page1, layer1) = PdfDocument::new(&format!("Invoice {}", invoice.invoice_code), Mm(210.0), Mm(297.0), "Layer 1");
     let font = doc.add_builtin_font(BuiltinFont::Helvetica).unwrap();
@@ -1243,6 +1245,9 @@ pub fn export_invoice_pdf(state: State<AppState>, invoice_id: i64) -> Result<Str
     
     current_layer.use_text(&format!("{}, {}", h_addr, h_city), 9.0, Mm(20.0), Mm(271.0), &font);
     current_layer.use_text(&format!("Phone: {}", h_phone), 9.0, Mm(20.0), Mm(266.0), &font);
+    if !h_gst.is_empty() {
+        current_layer.use_text(&format!("GSTIN: {}", h_gst), 9.0, Mm(20.0), Mm(261.0), &font);
+    }
 
     current_layer.use_text(&format!("Invoice #: {}", invoice.invoice_code), 12.0, Mm(20.0), Mm(255.0), &font);
     current_layer.use_text(&format!("Date: {}", invoice.issue_date), 12.0, Mm(20.0), Mm(258.0), &font);
@@ -1252,6 +1257,7 @@ pub fn export_invoice_pdf(state: State<AppState>, invoice_id: i64) -> Result<Str
     current_layer.use_text(&patient_name, 12.0, Mm(20.0), Mm(228.0), &font);
     
     current_layer.use_text("Description", 10.0, Mm(20.0), Mm(205.0), &font_bold);
+    current_layer.use_text("HSN", 10.0, Mm(90.0), Mm(205.0), &font_bold);
     current_layer.use_text("Qty", 10.0, Mm(110.0), Mm(205.0), &font_bold);
     current_layer.use_text("Rate", 10.0, Mm(130.0), Mm(205.0), &font_bold);
     current_layer.use_text("Amount", 10.0, Mm(160.0), Mm(205.0), &font_bold);
@@ -1259,6 +1265,7 @@ pub fn export_invoice_pdf(state: State<AppState>, invoice_id: i64) -> Result<Str
     let mut y_pos = 195.0;
     for item in &items {
         current_layer.use_text(&item.description, 10.0, Mm(20.0), Mm(y_pos), &font);
+        current_layer.use_text(item.hsn_code.as_deref().unwrap_or("-"), 10.0, Mm(90.0), Mm(y_pos), &font);
         current_layer.use_text(&item.quantity.to_string(), 10.0, Mm(110.0), Mm(y_pos), &font);
         current_layer.use_text(&format!("{:.2}", item.unit_price), 10.0, Mm(130.0), Mm(y_pos), &font);
         current_layer.use_text(&format!("{:.2}", item.total), 10.0, Mm(160.0), Mm(y_pos), &font);
@@ -1864,15 +1871,15 @@ pub fn send_message(state: State<AppState>, data: SendMessage) -> Result<Message
         None => None,
     };
     conn.execute(
-        "INSERT INTO message_logs (patient_id, phone, message_type, template_name, message_body, status) VALUES (?1,?2,?3,?4,?5,'Sent')",
-        params![data.patient_id, data.phone, data.message_type, data.template_name, data.message_body],
+        "INSERT INTO message_logs (patient_id, phone, email, message_type, template_name, message_body, status) VALUES (?1,?2,?3,?4,?5,?6,'Sent')",
+        params![data.patient_id, data.phone, data.email, data.message_type, data.template_name, data.message_body],
     ).map_err(|e| e.to_string())?;
     let id = conn.last_insert_rowid();
-    audit::log(&state.pool, "System", "Message sent", "message_log", Some(id), Some(&format!("{}: {}", data.message_type, data.phone)));
+    audit::log(&state.pool, "System", "Message sent", "message_log", Some(id), Some(&format!("{}: {}/{}", data.message_type, data.phone, data.email.as_deref().unwrap_or("-"))));
     conn.query_row(
-        "SELECT id, patient_id, phone, message_type, template_name, message_body, status, sent_at, error_message, created_at FROM message_logs WHERE id = ?1",
+        "SELECT id, patient_id, phone, email, message_type, template_name, message_body, status, sent_at, error_message, created_at FROM message_logs WHERE id = ?1",
         params![id],
-        |r| Ok(MessageLog { id: r.get(0)?, patient_id: r.get(1)?, patient_name, phone: r.get(2)?, message_type: r.get(3)?, template_name: r.get(4)?, message_body: r.get(5)?, status: r.get(6)?, sent_at: r.get(7)?, error_message: r.get(8)?, created_at: r.get(9)? }),
+        |r| Ok(MessageLog { id: r.get(0)?, patient_id: r.get(1)?, patient_name, phone: r.get(2)?, email: r.get(3)?, message_type: r.get(4)?, template_name: r.get(5)?, message_body: r.get(6)?, status: r.get(7)?, sent_at: r.get(8)?, error_message: r.get(9)?, created_at: r.get(10)? }),
     ).map_err(|e| e.to_string())
 }
 
@@ -1881,13 +1888,13 @@ pub fn get_message_logs(state: State<AppState>, limit: Option<i64>) -> Result<Ve
     let conn = state.pool.get().map_err(|e| e.to_string())?;
     let limit = limit.unwrap_or(50);
     let mut stmt = conn.prepare(
-        "SELECT m.id, m.patient_id, p.full_name, m.phone, m.message_type, m.template_name, m.message_body, m.status, m.sent_at, m.error_message, m.created_at 
+        "SELECT m.id, m.patient_id, p.full_name, m.phone, m.email, m.message_type, m.template_name, m.message_body, m.status, m.sent_at, m.error_message, m.created_at
          FROM message_logs m LEFT JOIN patients p ON m.patient_id = p.id ORDER BY m.id DESC LIMIT ?1"
     ).map_err(|e| e.to_string())?;
     let items = stmt.query_map(params![limit], |r| Ok(MessageLog {
-        id: r.get(0)?, patient_id: r.get(1)?, patient_name: r.get(2)?, phone: r.get(3)?,
-        message_type: r.get(4)?, template_name: r.get(5)?, message_body: r.get(6)?, status: r.get(7)?,
-        sent_at: r.get(8)?, error_message: r.get(9)?, created_at: r.get(10)?,
+        id: r.get(0)?, patient_id: r.get(1)?, patient_name: r.get(2)?, phone: r.get(3)?, email: r.get(4)?,
+        message_type: r.get(5)?, template_name: r.get(6)?, message_body: r.get(7)?, status: r.get(8)?,
+        sent_at: r.get(9)?, error_message: r.get(10)?, created_at: r.get(11)?,
     })).map_err(|e| e.to_string())?
     .filter_map(|r| r.ok()).collect();
     Ok(items)
@@ -3176,6 +3183,91 @@ pub fn export_patients_csv(state: State<AppState>) -> Result<String, String> {
     std::fs::write(&path, csv).map_err(|e| e.to_string())?;
 
     Ok(path)
+}
+
+#[tauri::command]
+pub fn export_gst_csv(state: State<AppState>, from: String, to: String) -> Result<String, String> {
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare("SELECT invoice_code, issue_date, subtotal, cgst, sgst, igst, tax, total FROM invoices WHERE issue_date BETWEEN ?1 AND ?2").map_err(|e| e.to_string())?;
+    let rows = stmt.query_map(params![from, to], |r| {
+        Ok(format!("{},{},{},{},{},{},{},{}",
+            escape_csv(&r.get::<_,String>(0)?), escape_csv(&r.get::<_,String>(1)?),
+            r.get::<_,f64>(2)?, r.get::<_,f64>(3)?, r.get::<_,f64>(4)?, r.get::<_,f64>(5)?, r.get::<_,f64>(6)?, r.get::<_,f64>(7)?))
+    }).map_err(|e| e.to_string())?;
+
+    let mut csv = String::from("Invoice #,Date,Subtotal,CGST,SGST,IGST,Total Tax,Grand Total\n");
+    for row in rows {
+        if let Ok(r) = row { csv.push_str(&r); csv.push('\n'); }
+    }
+
+    let base_path = if cfg!(windows) { std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string()) } else { std::env::var("HOME").map(|h| format!("{}/.local/share", h)).unwrap_or_else(|_| ".".to_string()) };
+    let dir_path = format!("{}/MediCore/exports", base_path);
+    let path = format!("{}/gst_report_{}_{}.csv", dir_path, from, to);
+    std::fs::create_dir_all(&dir_path).map_err(|e| e.to_string())?;
+    std::fs::write(&path, csv).map_err(|e| e.to_string())?;
+    Ok(path)
+}
+
+// ─── SUPPORT TICKETS ─────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn get_support_tickets(state: State<AppState>, status: Option<String>) -> Result<Vec<SupportTicket>, String> {
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(
+        "SELECT t.id, t.ticket_code, t.patient_id, p.full_name, t.subject, t.description, t.category, t.priority, t.status, t.assigned_to, u.full_name, t.created_at, t.updated_at
+         FROM support_tickets t
+         LEFT JOIN patients p ON t.patient_id = p.id
+         LEFT JOIN users u ON t.assigned_to = u.id
+         WHERE (?1 IS NULL OR t.status = ?1) ORDER BY t.id DESC"
+    ).map_err(|e| e.to_string())?;
+    let items = stmt.query_map(params![status], |r| Ok(SupportTicket {
+        id: r.get(0)?, ticket_code: r.get(1)?, patient_id: r.get(2)?, patient_name: r.get(3)?, subject: r.get(4)?,
+        description: r.get(5)?, category: r.get(6)?, priority: r.get(7)?, status: r.get(8)?, assigned_to: r.get(9)?,
+        assigned_user_name: r.get(10)?, created_at: r.get(11)?, updated_at: r.get(12)?,
+    })).map_err(|e| e.to_string())?
+    .filter_map(|r| r.ok()).collect();
+    Ok(items)
+}
+
+#[tauri::command]
+pub fn create_support_ticket(state: State<AppState>, data: CreateSupportTicket) -> Result<SupportTicket, String> {
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    let code = new_code("TKT");
+    conn.execute(
+        "INSERT INTO support_tickets (ticket_code, patient_id, subject, description, category, priority, assigned_to) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![code, data.patient_id, data.subject, data.description, data.category, data.priority.unwrap_or_else(|| "Medium".to_string()), data.assigned_to],
+    ).map_err(|e| e.to_string())?;
+    let id = conn.last_insert_rowid();
+    audit::log(&state.pool, "System", "Support ticket created", "support", Some(id), Some(&code));
+
+    conn.query_row(
+        "SELECT t.id, t.ticket_code, t.patient_id, p.full_name, t.subject, t.description, t.category, t.priority, t.status, t.assigned_to, u.full_name, t.created_at, t.updated_at
+         FROM support_tickets t LEFT JOIN patients p ON t.patient_id = p.id LEFT JOIN users u ON t.assigned_to = u.id WHERE t.id = ?1",
+        params![id],
+        |r| Ok(SupportTicket {
+            id: r.get(0)?, ticket_code: r.get(1)?, patient_id: r.get(2)?, patient_name: r.get(3)?, subject: r.get(4)?,
+            description: r.get(5)?, category: r.get(6)?, priority: r.get(7)?, status: r.get(8)?, assigned_to: r.get(9)?,
+            assigned_user_name: r.get(10)?, created_at: r.get(11)?, updated_at: r.get(12)?,
+        })
+    ).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn update_support_ticket(state: State<AppState>, id: i64, data: UpdateSupportTicket) -> Result<(), String> {
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+
+    if let Some(status) = data.status {
+        conn.execute("UPDATE support_tickets SET status = ?1, updated_at = datetime('now') WHERE id = ?2", params![status, id]).map_err(|e| e.to_string())?;
+    }
+    if let Some(assigned_to) = data.assigned_to {
+        conn.execute("UPDATE support_tickets SET assigned_to = ?1, updated_at = datetime('now') WHERE id = ?2", params![assigned_to, id]).map_err(|e| e.to_string())?;
+    }
+    if let Some(priority) = data.priority {
+        conn.execute("UPDATE support_tickets SET priority = ?1, updated_at = datetime('now') WHERE id = ?2", params![priority, id]).map_err(|e| e.to_string())?;
+    }
+
+    audit::log(&state.pool, "System", "Support ticket updated", "support", Some(id), None);
+    Ok(())
 }
 
 #[tauri::command]
