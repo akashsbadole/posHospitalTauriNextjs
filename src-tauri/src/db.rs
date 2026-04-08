@@ -39,16 +39,24 @@ fn column_exists(conn: &rusqlite::Connection, table: &str, column: &str) -> Resu
 }
 
 fn run_gst_migrations(conn: &rusqlite::Connection) -> Result<()> {
-    let columns = ["cgst", "sgst", "igst", "tax_type", "vat_amount", "hsn_code"];
-    for col in columns {
+    let invoice_cols = ["cgst", "sgst", "igst", "tax_type", "vat_amount"];
+    for col in invoice_cols {
         if !column_exists(conn, "invoices", col)? {
-            let sql = if col == "tax_type" || col == "hsn_code" {
+            let sql = if col == "tax_type" {
                 format!("ALTER TABLE invoices ADD COLUMN {} TEXT", col)
             } else {
                 format!("ALTER TABLE invoices ADD COLUMN {} REAL DEFAULT 0", col)
             };
             conn.execute(&sql, [])?;
         }
+    }
+
+    if !column_exists(conn, "invoice_items", "hsn_code")? {
+        conn.execute("ALTER TABLE invoice_items ADD COLUMN hsn_code TEXT", [])?;
+    }
+
+    if !column_exists(conn, "message_logs", "email")? {
+        conn.execute("ALTER TABLE message_logs ADD COLUMN email TEXT", [])?;
     }
 
     // Add visit_type and diagnosis to visits table
@@ -110,6 +118,23 @@ fn run_gst_migrations(conn: &rusqlite::Connection) -> Result<()> {
         conn.execute("ALTER TABLE wards ADD COLUMN base_charge REAL NOT NULL DEFAULT 500", [])?;
     }
     
+    // Support Tickets table
+    conn.execute_batch("
+        CREATE TABLE IF NOT EXISTS support_tickets (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticket_code     TEXT NOT NULL UNIQUE,
+            patient_id      INTEGER REFERENCES patients(id) ON DELETE SET NULL,
+            subject         TEXT NOT NULL,
+            description     TEXT NOT NULL,
+            category        TEXT NOT NULL,
+            priority        TEXT NOT NULL DEFAULT 'Medium',
+            status          TEXT NOT NULL DEFAULT 'Open',
+            assigned_to     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+    ")?;
+
     Ok(())
 }
 
@@ -147,6 +172,8 @@ fn seed_data(conn: &rusqlite::Connection) -> Result<()> {
         params!["DR-002", "Dr. Sarah", "Cardiology", "+91 9876543211", "dr.sarah@medicore.com", "MBBS DM", "Available", "Morning", 15, 800])?;
     conn.execute("INSERT INTO doctors (staff_code, full_name, specialization, phone, email, qualification, availability_status, shift, experience_years, consultation_fee) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         params!["DR-003", "Dr. Raj", "Orthopedics", "+91 9876543212", "dr.raj@medicore.com", "MBBS MS", "Available", "Evening", 8, 600])?;
+
+    conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('hospital_gstin', '27AAACM4821M1Z5')", [])?;
 
     Ok(())
 }
@@ -524,6 +551,7 @@ CREATE TABLE IF NOT EXISTS message_logs (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     patient_id      INTEGER REFERENCES patients(id) ON DELETE SET NULL,
     phone           TEXT NOT NULL,
+    email           TEXT,
     message_type    TEXT NOT NULL,
     template_name   TEXT,
     message_body    TEXT NOT NULL,

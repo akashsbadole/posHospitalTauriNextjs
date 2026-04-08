@@ -2,10 +2,11 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getLabTests, updateLabStatus, uploadLabReport } from "@/lib/tauri";
 import { useState } from "react";
-import { Plus, Search, Upload, Eye, CheckCircle, FileUp } from "lucide-react";
+import { Plus, Search, Upload, Eye, CheckCircle, FileUp, Share2, Mail, FileText } from "lucide-react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { toast } from "sonner";
 import type { LabTest } from "@/types";
+import { openFile, sendMessage } from "@/lib/tauri";
 import { NewLabTestModal } from "@/components/modules/NewLabTestModal";
 import { LabResultEntryModal } from "@/components/modules/LabResultEntryModal";
 
@@ -52,6 +53,34 @@ export default function LabPage() {
   };
 
   const filtered = tests.filter(t=>!search||t.patient_name?.toLowerCase().includes(search.toLowerCase())||t.test_name.toLowerCase().includes(search.toLowerCase()));
+
+  const handleViewReport = async (path: string) => {
+    try {
+      await openFile(path);
+    } catch (e) {
+      toast.error("Failed to open report: " + e);
+    }
+  };
+
+  const handleShare = async (test: LabTest, channel: "WhatsApp" | "Email") => {
+    const contact = channel === "WhatsApp" ? test.patient_phone : test.patient_email;
+    if (!contact) {
+      toast.error(`Patient ${channel === "WhatsApp" ? "phone number" : "email"} not found`);
+      return;
+    }
+    try {
+      await sendMessage({
+        patient_id: test.patient_id,
+        phone: test.patient_phone || "",
+        email: test.patient_email || "",
+        message_type: channel,
+        message_body: `Dear ${test.patient_name}, your lab result for ${test.test_name} (${test.lab_code}) is ${test.status}.`,
+      });
+      toast.success(`Result shared via ${channel}!`);
+    } catch (e) {
+      toast.error("Failed to share: " + e);
+    }
+  };
 
   return (
     <div>
@@ -121,7 +150,11 @@ export default function LabPage() {
                     <td><span className={`badge ${STATUS_BADGE[t.status]}`}>{t.status}</span></td>
                     <td>
                       <div className="flex gap-1.5">
-                        <button className="icon-btn"><Eye size={12} /></button>
+                        {t.report_path ? (
+                          <button className="icon-btn hover:!text-accent" title="View Report PDF" onClick={() => handleViewReport(t.report_path!)}><FileText size={12} /></button>
+                        ) : (
+                          <button className="icon-btn" title="View Details"><Eye size={12} /></button>
+                        )}
                         {t.status !== "Reviewed" && (
                           <button className="icon-btn hover:!text-success"
                             onClick={()=>{
@@ -132,6 +165,8 @@ export default function LabPage() {
                         )}
                         <button className="icon-btn hover:!text-accent" title="Enter Result" onClick={() => setEntryTest({ id: t.id, test_name: t.test_name, test_category: t.test_category, patient_name: t.patient_name })}><Upload size={12} /></button>
                         <button className="icon-btn hover:!text-purple" title="Upload PDF Report" onClick={() => handleUpload(t.id)}><FileUp size={12} /></button>
+                        <button className="icon-btn hover:!text-green-500" title="Share via WhatsApp" onClick={() => handleShare(t, "WhatsApp")}><Share2 size={12} /></button>
+                        <button className="icon-btn hover:!text-blue-400" title="Share via Email" onClick={() => handleShare(t, "Email")}><Mail size={12} /></button>
                       </div>
                     </td>
                   </tr>

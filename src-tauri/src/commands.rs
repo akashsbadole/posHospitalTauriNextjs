@@ -90,6 +90,225 @@ pub fn get_dashboard_stats(state: State<AppState>) -> Result<DashboardStats, Str
 }
 
 #[tauri::command]
+pub fn export_discharge_summary_pdf(state: State<AppState>, id: i64) -> Result<String, String> {
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    let ds = get_discharge_summary_by_id(state.clone(), id)?;
+
+    let patient: Patient = conn.query_row(
+        "SELECT id, patient_code, full_name, dob, gender, phone, email, blood_group, address, emergency_contact, emergency_phone, allergies, chronic_conditions, department, assigned_doctor_id, status, insurance_provider, insurance_number, photo_path, created_at, updated_at FROM patients WHERE id = ?1",
+        params![ds.patient_id],
+        |r| Ok(Patient {
+            id: r.get(0)?, patient_code: r.get(1)?, full_name: r.get(2)?, dob: r.get(3)?,
+            gender: r.get(4)?, phone: r.get(5)?, email: r.get(6)?, blood_group: r.get(7)?,
+            address: r.get(8)?, emergency_contact: r.get(9)?, emergency_phone: r.get(10)?,
+            allergies: r.get(11)?, chronic_conditions: r.get(12)?, department: r.get(13)?,
+            assigned_doctor_id: r.get(14)?, assigned_doctor_name: None,
+            status: r.get(15)?, insurance_provider: r.get(16)?, insurance_number: r.get(17)?,
+            photo_path: r.get(18)?, created_at: r.get(19)?, updated_at: r.get(20)?,
+        }),
+    ).map_err(|e| e.to_string())?;
+
+    let h_name: String = conn.query_row("SELECT value FROM settings WHERE key = 'hospital_name'", [], |r| r.get(0)).unwrap_or_else(|_| "MediCore Hospital".to_string());
+    let h_addr: String = conn.query_row("SELECT value FROM settings WHERE key = 'hospital_address'", [], |r| r.get(0)).unwrap_or_else(|_| "".to_string());
+    let h_city: String = conn.query_row("SELECT value FROM settings WHERE key = 'hospital_city'", [], |r| r.get(0)).unwrap_or_else(|_| "".to_string());
+
+    let (doc, page1, layer1) = PdfDocument::new(&format!("Discharge Summary {}", ds.summary_code), Mm(210.0), Mm(297.0), "Layer 1");
+    let font = doc.add_builtin_font(BuiltinFont::Helvetica).unwrap();
+    let font_bold = doc.add_builtin_font(BuiltinFont::HelveticaBold).unwrap();
+    let current_layer = doc.get_page(page1).get_layer(layer1);
+
+    current_layer.use_text(&h_name, 18.0, Mm(20.0), Mm(277.0), &font_bold);
+    current_layer.use_text("DISCHARGE SUMMARY", 20.0, Mm(120.0), Mm(277.0), &font_bold);
+    current_layer.use_text(&format!("{}, {}", h_addr, h_city), 9.0, Mm(20.0), Mm(271.0), &font);
+
+    current_layer.set_outline_thickness(0.5);
+    current_layer.add_line(Line {
+        points: vec![(Point::new(Mm(20.0), Mm(265.0)), false), (Point::new(Mm(190.0), Mm(265.0)), false)],
+        is_closed: false,
+        has_fill: false,
+        has_stroke: true,
+        is_clipping_path: false,
+    });
+
+    current_layer.use_text("Patient:", 10.0, Mm(20.0), Mm(255.0), &font_bold);
+    current_layer.use_text(&patient.full_name, 10.0, Mm(40.0), Mm(255.0), &font);
+    current_layer.use_text("ID:", 10.0, Mm(110.0), Mm(255.0), &font_bold);
+    current_layer.use_text(&patient.patient_code, 10.0, Mm(120.0), Mm(255.0), &font);
+
+    current_layer.use_text("Admission:", 10.0, Mm(20.0), Mm(248.0), &font_bold);
+    current_layer.use_text(&ds.admission_date, 10.0, Mm(45.0), Mm(248.0), &font);
+    current_layer.use_text("Discharge:", 10.0, Mm(110.0), Mm(248.0), &font_bold);
+    current_layer.use_text(&ds.discharge_date, 10.0, Mm(135.0), Mm(248.0), &font);
+
+    current_layer.use_text("Diagnosis:", 11.0, Mm(20.0), Mm(235.0), &font_bold);
+    current_layer.use_text(&ds.diagnosis, 10.0, Mm(20.0), Mm(228.0), &font);
+
+    if let Some(proc) = &ds.procedure_done {
+        current_layer.use_text("Procedure Done:", 11.0, Mm(20.0), Mm(215.0), &font_bold);
+        current_layer.use_text(proc, 10.0, Mm(20.0), Mm(208.0), &font);
+    }
+
+    current_layer.use_text("Advice on Discharge:", 11.0, Mm(20.0), Mm(190.0), &font_bold);
+    current_layer.use_text(ds.advice_on_discharge.as_deref().unwrap_or("-"), 10.0, Mm(20.0), Mm(183.0), &font);
+
+    current_layer.use_text("Medications:", 11.0, Mm(20.0), Mm(165.0), &font_bold);
+    let mut y = 158.0;
+    for m in &ds.medications {
+        current_layer.use_text(&format!("• {} - {} ({})", m.medication, m.dosage, m.duration), 10.0, Mm(25.0), Mm(y), &font);
+        y -= 7.0;
+    }
+
+    let app_data = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
+    let path = format!("{}/MediCore/discharge/{}.pdf", app_data, ds.summary_code);
+    let dir_path = format!("{}/MediCore/discharge", app_data);
+    std::fs::create_dir_all(&dir_path).map_err(|e| e.to_string())?;
+
+    let file = File::create(&path).map_err(|e| e.to_string())?;
+    doc.save(&mut BufWriter::new(file)).unwrap();
+
+    audit::log(&state.pool, "System", "Discharge summary exported to PDF", "discharge", Some(id), None);
+    Ok(path)
+}
+
+#[tauri::command]
+pub fn open_file(path: String) -> Result<(), String> {
+    open::that(path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn export_prescription_pdf(state: State<AppState>, prescription_id: i64) -> Result<String, String> {
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+
+    let rx = get_prescription_by_id(state.clone(), prescription_id)?;
+
+    let patient: Patient = conn.query_row(
+        "SELECT id, patient_code, full_name, dob, gender, phone, email, blood_group, address, emergency_contact, emergency_phone, allergies, chronic_conditions, department, assigned_doctor_id, status, insurance_provider, insurance_number, photo_path, created_at, updated_at FROM patients WHERE id = ?1",
+        params![rx.patient_id],
+        |r| Ok(Patient {
+            id: r.get(0)?, patient_code: r.get(1)?, full_name: r.get(2)?, dob: r.get(3)?,
+            gender: r.get(4)?, phone: r.get(5)?, email: r.get(6)?, blood_group: r.get(7)?,
+            address: r.get(8)?, emergency_contact: r.get(9)?, emergency_phone: r.get(10)?,
+            allergies: r.get(11)?, chronic_conditions: r.get(12)?, department: r.get(13)?,
+            assigned_doctor_id: r.get(14)?, assigned_doctor_name: None,
+            status: r.get(15)?, insurance_provider: r.get(16)?, insurance_number: r.get(17)?,
+            photo_path: r.get(18)?, created_at: r.get(19)?, updated_at: r.get(20)?,
+        }),
+    ).map_err(|e| e.to_string())?;
+
+    let doctor: Doctor = conn.query_row(
+        "SELECT id, staff_code, full_name, specialization, phone, email, qualification, availability_status, shift, experience_years, consultation_fee, created_at FROM doctors WHERE id = ?1",
+        params![rx.doctor_id],
+        |r| Ok(Doctor {
+            id: r.get(0)?, staff_code: r.get(1)?, full_name: r.get(2)?, specialization: r.get(3)?,
+            phone: r.get(4)?, email: r.get(5)?, qualification: r.get(6)?,
+            availability_status: r.get(7)?, shift: r.get(8)?,
+            experience_years: r.get(9)?, consultation_fee: r.get(10)?, created_at: r.get(11)?,
+        }),
+    ).map_err(|e| e.to_string())?;
+
+    let h_name: String = conn.query_row("SELECT value FROM settings WHERE key = 'hospital_name'", [], |r| r.get(0)).unwrap_or_else(|_| "MediCore Hospital".to_string());
+    let h_addr: String = conn.query_row("SELECT value FROM settings WHERE key = 'hospital_address'", [], |r| r.get(0)).unwrap_or_else(|_| "".to_string());
+    let h_city: String = conn.query_row("SELECT value FROM settings WHERE key = 'hospital_city'", [], |r| r.get(0)).unwrap_or_else(|_| "".to_string());
+    let h_phone: String = conn.query_row("SELECT value FROM settings WHERE key = 'hospital_phone'", [], |r| r.get(0)).unwrap_or_else(|_| "".to_string());
+
+    let (doc, page1, layer1) = PdfDocument::new(&format!("Prescription {}", rx.rx_code), Mm(210.0), Mm(297.0), "Layer 1");
+    let font = doc.add_builtin_font(BuiltinFont::Helvetica).unwrap();
+    let font_bold = doc.add_builtin_font(BuiltinFont::HelveticaBold).unwrap();
+    let current_layer = doc.get_page(page1).get_layer(layer1);
+
+    // Header
+    current_layer.use_text(&h_name, 18.0, Mm(20.0), Mm(277.0), &font_bold);
+    current_layer.use_text("PRESCRIPTION", 24.0, Mm(140.0), Mm(277.0), &font_bold);
+    current_layer.use_text(&format!("{}, {}", h_addr, h_city), 9.0, Mm(20.0), Mm(271.0), &font);
+    current_layer.use_text(&format!("Phone: {}", h_phone), 9.0, Mm(20.0), Mm(266.0), &font);
+
+    // Doctor Info (Right aligned roughly)
+    current_layer.use_text(&doctor.full_name, 12.0, Mm(140.0), Mm(260.0), &font_bold);
+    current_layer.use_text(&doctor.qualification, 9.0, Mm(140.0), Mm(255.0), &font);
+    current_layer.use_text(&doctor.specialization, 9.0, Mm(140.0), Mm(251.0), &font);
+
+    // Separator
+    current_layer.set_outline_thickness(0.5);
+    current_layer.add_line(Line {
+        points: vec![(Point::new(Mm(20.0), Mm(245.0)), false), (Point::new(Mm(190.0), Mm(245.0)), false)],
+        is_closed: false,
+        has_fill: false,
+        has_stroke: true,
+        is_clipping_path: false,
+    });
+
+    // Patient Info
+    current_layer.use_text("Patient Name:", 10.0, Mm(20.0), Mm(235.0), &font_bold);
+    current_layer.use_text(&patient.full_name, 10.0, Mm(50.0), Mm(235.0), &font);
+    current_layer.use_text("ID:", 10.0, Mm(110.0), Mm(235.0), &font_bold);
+    current_layer.use_text(&patient.patient_code, 10.0, Mm(120.0), Mm(235.0), &font);
+    current_layer.use_text("Date:", 10.0, Mm(155.0), Mm(235.0), &font_bold);
+    current_layer.use_text(&rx.issue_date, 10.0, Mm(165.0), Mm(235.0), &font);
+
+    current_layer.use_text("Age/Gender:", 10.0, Mm(20.0), Mm(228.0), &font_bold);
+    current_layer.use_text(&format!("{} / {}", patient.dob, patient.gender), 10.0, Mm(50.0), Mm(228.0), &font);
+    current_layer.use_text("Blood Group:", 10.0, Mm(110.0), Mm(228.0), &font_bold);
+    current_layer.use_text(&patient.blood_group, 10.0, Mm(135.0), Mm(228.0), &font);
+
+    // Diagnosis
+    if let Some(diagnosis) = &rx.diagnosis {
+        current_layer.use_text("Diagnosis:", 11.0, Mm(20.0), Mm(215.0), &font_bold);
+        current_layer.use_text(diagnosis, 11.0, Mm(20.0), Mm(208.0), &font);
+    }
+
+    // Rx Symbol
+    current_layer.use_text("Rx", 24.0, Mm(20.0), Mm(190.0), &font_bold);
+
+    // Medications Table Header
+    current_layer.use_text("Medication", 10.0, Mm(25.0), Mm(175.0), &font_bold);
+    current_layer.use_text("Dosage", 10.0, Mm(85.0), Mm(175.0), &font_bold);
+    current_layer.use_text("Freq", 10.0, Mm(110.0), Mm(175.0), &font_bold);
+    current_layer.use_text("Dur", 10.0, Mm(135.0), Mm(175.0), &font_bold);
+    current_layer.use_text("Instructions", 10.0, Mm(150.0), Mm(175.0), &font_bold);
+
+    let mut y_pos = 168.0;
+    for drug in &rx.drugs {
+        current_layer.use_text(&drug.drug_name, 9.0, Mm(25.0), Mm(y_pos), &font);
+        current_layer.use_text(&drug.dosage, 9.0, Mm(85.0), Mm(y_pos), &font);
+        current_layer.use_text(&drug.frequency, 9.0, Mm(110.0), Mm(y_pos), &font);
+        current_layer.use_text(&format!("{} days", drug.duration_days), 9.0, Mm(135.0), Mm(y_pos), &font);
+        current_layer.use_text(drug.instructions.as_deref().unwrap_or("-"), 8.0, Mm(150.0), Mm(y_pos), &font);
+        y_pos -= 7.0;
+
+        if y_pos < 50.0 { // Very basic pagination check
+             break;
+        }
+    }
+
+    // Notes
+    if let Some(notes) = &rx.notes {
+        current_layer.use_text("Additional Notes:", 10.0, Mm(20.0), Mm(y_pos - 10.0), &font_bold);
+        current_layer.use_text(notes, 9.0, Mm(20.0), Mm(y_pos - 17.0), &font);
+    }
+
+    // Footer / Signature
+    current_layer.use_text("Doctor's Signature", 10.0, Mm(150.0), Mm(30.0), &font);
+    current_layer.add_line(Line {
+        points: vec![(Point::new(Mm(140.0), Mm(35.0)), false), (Point::new(Mm(190.0), Mm(35.0)), false)],
+        is_closed: false,
+        has_fill: false,
+        has_stroke: true,
+        is_clipping_path: false,
+    });
+
+    let app_data = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
+    let path = format!("{}/MediCore/prescriptions/{}.pdf", app_data, rx.rx_code);
+    let dir_path = format!("{}/MediCore/prescriptions", app_data);
+    std::fs::create_dir_all(&dir_path).map_err(|e| e.to_string())?;
+
+    let file = File::create(&path).map_err(|e| e.to_string())?;
+    doc.save(&mut BufWriter::new(file)).unwrap();
+
+    audit::log(&state.pool, "System", "Prescription exported to PDF", "prescription", Some(prescription_id), None);
+    Ok(path)
+}
+
+#[tauri::command]
 pub fn get_recent_activity(state: State<AppState>, limit: Option<i64>) -> Result<Vec<AuditLog>, String> {
     let conn = state.pool.get().map_err(|e| e.to_string())?;
     let lim = limit.unwrap_or(20);
@@ -699,7 +918,7 @@ fn load_drugs(conn: &rusqlite::Connection, prescription_id: i64) -> Vec<Prescrip
 pub fn get_prescriptions(state: State<AppState>, patient_id: Option<i64>) -> Result<Vec<Prescription>, String> {
     let conn = state.pool.get().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
-        "SELECT r.id, r.rx_code, r.patient_id, p.full_name, r.doctor_id, d.full_name,
+        "SELECT r.id, r.rx_code, r.patient_id, p.full_name, p.phone, p.email, r.doctor_id, d.full_name,
                 r.issue_date, r.valid_until, r.status, r.diagnosis, r.notes, r.created_at
          FROM prescriptions r JOIN patients p ON r.patient_id = p.id JOIN doctors d ON r.doctor_id = d.id
          WHERE (?1 IS NULL OR r.patient_id = ?1) ORDER BY r.id DESC"
@@ -707,14 +926,15 @@ pub fn get_prescriptions(state: State<AppState>, patient_id: Option<i64>) -> Res
     let rxs: Vec<Prescription> = stmt.query_map(params![patient_id], |r| {
         let id: i64 = r.get(0)?;
         Ok((id, r.get::<_,String>(1)?, r.get::<_,i64>(2)?, r.get::<_,Option<String>>(3)?,
-            r.get::<_,i64>(4)?, r.get::<_,Option<String>>(5)?,
-            r.get::<_,String>(6)?, r.get::<_,String>(7)?, r.get::<_,String>(8)?,
-            r.get::<_,Option<String>>(9)?, r.get::<_,Option<String>>(10)?, r.get::<_,String>(11)?))
+            r.get::<_,Option<String>>(4)?, r.get::<_,Option<String>>(5)?,
+            r.get::<_,i64>(6)?, r.get::<_,Option<String>>(7)?,
+            r.get::<_,String>(8)?, r.get::<_,String>(9)?, r.get::<_,String>(10)?,
+            r.get::<_,Option<String>>(11)?, r.get::<_,Option<String>>(12)?, r.get::<_,String>(13)?))
     }).map_err(|e| e.to_string())?
     .filter_map(|r| r.ok())
-    .map(|(id, rx_code, patient_id, patient_name, doctor_id, doctor_name, issue_date, valid_until, status, diagnosis, notes, created_at)| {
+    .map(|(id, rx_code, patient_id, patient_name, patient_phone, patient_email, doctor_id, doctor_name, issue_date, valid_until, status, diagnosis, notes, created_at)| {
         let drugs = load_drugs(&conn, id);
-        Prescription { id, rx_code, patient_id, patient_name, doctor_id, doctor_name, issue_date, valid_until, status, drugs, diagnosis, notes, created_at }
+        Prescription { id, rx_code, patient_id, patient_name, patient_phone, patient_email, doctor_id, doctor_name, issue_date, valid_until, status, drugs, diagnosis, notes, created_at }
     }).collect();
     Ok(rxs)
 }
@@ -722,17 +942,18 @@ pub fn get_prescriptions(state: State<AppState>, patient_id: Option<i64>) -> Res
 #[tauri::command]
 pub fn get_prescription_by_id(state: State<AppState>, id: i64) -> Result<Prescription, String> {
     let conn = state.pool.get().map_err(|e| e.to_string())?;
-    let (rx_code, patient_id, patient_name, doctor_id, doctor_name, issue_date, valid_until, status, diagnosis, notes, created_at) = conn.query_row(
-        "SELECT r.rx_code, r.patient_id, p.full_name, r.doctor_id, d.full_name, r.issue_date, r.valid_until, r.status, r.diagnosis, r.notes, r.created_at
+    let (rx_code, patient_id, patient_name, patient_phone, patient_email, doctor_id, doctor_name, issue_date, valid_until, status, diagnosis, notes, created_at) = conn.query_row(
+        "SELECT r.rx_code, r.patient_id, p.full_name, p.phone, p.email, r.doctor_id, d.full_name, r.issue_date, r.valid_until, r.status, r.diagnosis, r.notes, r.created_at
          FROM prescriptions r JOIN patients p ON r.patient_id = p.id JOIN doctors d ON r.doctor_id = d.id WHERE r.id = ?1",
         params![id],
         |r| Ok((r.get::<_,String>(0)?, r.get::<_,i64>(1)?, r.get::<_,Option<String>>(2)?,
-                r.get::<_,i64>(3)?, r.get::<_,Option<String>>(4)?, r.get::<_,String>(5)?,
-                r.get::<_,String>(6)?, r.get::<_,String>(7)?, r.get::<_,Option<String>>(8)?,
-                r.get::<_,Option<String>>(9)?, r.get::<_,String>(10)?)),
+                r.get::<_,Option<String>>(3)?, r.get::<_,Option<String>>(4)?,
+                r.get::<_,i64>(5)?, r.get::<_,Option<String>>(6)?, r.get::<_,String>(7)?,
+                r.get::<_,String>(8)?, r.get::<_,String>(9)?, r.get::<_,Option<String>>(10)?,
+                r.get::<_,Option<String>>(11)?, r.get::<_,String>(12)?)),
     ).map_err(|e| e.to_string())?;
     let drugs = load_drugs(&conn, id);
-    Ok(Prescription { id, rx_code, patient_id, patient_name, doctor_id, doctor_name, issue_date, valid_until, status, drugs, diagnosis, notes, created_at })
+    Ok(Prescription { id, rx_code, patient_id, patient_name, patient_phone, patient_email, doctor_id, doctor_name, issue_date, valid_until, status, drugs, diagnosis, notes, created_at })
 }
 
 #[tauri::command]
@@ -856,7 +1077,7 @@ pub fn get_prescriptions_due_refill(state: State<AppState>) -> Result<Vec<Prescr
 pub fn get_lab_tests(state: State<AppState>, status: Option<String>, patient_id: Option<i64>) -> Result<Vec<LabTest>, String> {
     let conn = state.pool.get().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
-        "SELECT l.id, l.lab_code, l.patient_id, p.full_name, l.doctor_id, d.full_name,
+        "SELECT l.id, l.lab_code, l.patient_id, p.full_name, p.phone, p.email, l.doctor_id, d.full_name,
                 l.test_name, l.test_category, l.ordered_date, l.result_date, l.status,
                 l.result_value, l.result_unit, l.reference_range, l.is_abnormal, l.notes, l.report_path, l.cost
          FROM lab_tests l JOIN patients p ON l.patient_id = p.id JOIN doctors d ON l.doctor_id = d.id
@@ -865,11 +1086,12 @@ pub fn get_lab_tests(state: State<AppState>, status: Option<String>, patient_id:
     ).map_err(|e| e.to_string())?;
     let tests = stmt.query_map(params![status, patient_id], |r| Ok(LabTest {
         id: r.get(0)?, lab_code: r.get(1)?, patient_id: r.get(2)?, patient_name: r.get(3)?,
-        doctor_id: r.get(4)?, doctor_name: r.get(5)?, test_name: r.get(6)?, test_category: r.get(7)?,
-        ordered_date: r.get(8)?, result_date: r.get(9)?, status: r.get(10)?,
-        result_value: r.get(11)?, result_unit: r.get(12)?, reference_range: r.get(13)?,
-        is_abnormal: r.get::<_,i64>(14)? != 0, notes: r.get(15)?, report_path: r.get(16)?,
-        cost: r.get(17).unwrap_or(0.0),
+        patient_phone: r.get(4)?, patient_email: r.get(5)?,
+        doctor_id: r.get(6)?, doctor_name: r.get(7)?, test_name: r.get(8)?, test_category: r.get(9)?,
+        ordered_date: r.get(10)?, result_date: r.get(11)?, status: r.get(12)?,
+        result_value: r.get(13)?, result_unit: r.get(14)?, reference_range: r.get(15)?,
+        is_abnormal: r.get::<_,i64>(16)? != 0, notes: r.get(17)?, report_path: r.get(18)?,
+        cost: r.get(19).unwrap_or(0.0),
     })).map_err(|e| e.to_string())?
     .filter_map(|r| r.ok()).collect();
     Ok(tests)
@@ -1080,10 +1302,11 @@ pub fn create_ward_with_beds(state: State<AppState>, data: Ward) -> Result<Ward,
 // ─── BILLING ──────────────────────────────────────────────────────────────────
 
 fn load_invoice_items(conn: &rusqlite::Connection, invoice_id: i64) -> Vec<InvoiceItem> {
-    let mut stmt = conn.prepare("SELECT id, invoice_id, description, category, quantity, unit_price, total FROM invoice_items WHERE invoice_id = ?1").unwrap();
+    let mut stmt = conn.prepare("SELECT id, invoice_id, description, category, quantity, unit_price, total, hsn_code FROM invoice_items WHERE invoice_id = ?1").unwrap();
     stmt.query_map(params![invoice_id], |r| Ok(InvoiceItem {
         id: r.get(0)?, invoice_id: r.get(1)?, description: r.get(2)?, category: r.get(3)?,
         quantity: r.get(4)?, unit_price: r.get(5)?, total: r.get(6)?,
+        hsn_code: r.get(7)?,
     })).unwrap().filter_map(|r| r.ok()).collect()
 }
 
@@ -1091,7 +1314,7 @@ fn load_invoice_items(conn: &rusqlite::Connection, invoice_id: i64) -> Vec<Invoi
 pub fn get_invoices(state: State<AppState>, status: Option<String>, patient_id: Option<i64>) -> Result<Vec<Invoice>, String> {
     let conn = state.pool.get().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
-        "SELECT i.id, i.invoice_code, i.patient_id, p.full_name, i.issue_date, i.due_date, i.status,
+        "SELECT i.id, i.invoice_code, i.patient_id, p.full_name, p.phone, p.email, i.issue_date, i.due_date, i.status,
                 i.subtotal, i.discount, i.tax, i.cgst, i.sgst, i.igst, i.total, i.paid_amount, i.balance,
                 i.payment_method, i.insurance_claim_id, i.notes, i.created_at
          FROM invoices i JOIN patients p ON i.patient_id = p.id
@@ -1101,16 +1324,17 @@ pub fn get_invoices(state: State<AppState>, status: Option<String>, patient_id: 
     let invoices: Vec<Invoice> = stmt.query_map(params![status, patient_id], |r| {
         let id: i64 = r.get(0)?;
         Ok((id, r.get::<_,String>(1)?, r.get::<_,i64>(2)?, r.get::<_,Option<String>>(3)?,
-            r.get::<_,String>(4)?, r.get::<_,String>(5)?, r.get::<_,String>(6)?,
-            r.get::<_,f64>(7)?, r.get::<_,f64>(8)?, r.get::<_,f64>(9)?, r.get::<_,f64>(10)?,
-            r.get::<_,f64>(11)?, r.get::<_,f64>(12)?, r.get::<_,f64>(13)?,
-            r.get::<_,f64>(14)?, r.get::<_,f64>(15)?, r.get::<_,Option<String>>(16)?,
-            r.get::<_,Option<i64>>(17)?, r.get::<_,Option<String>>(18)?, r.get::<_,String>(19)?))
+            r.get::<_,Option<String>>(4)?, r.get::<_,Option<String>>(5)?,
+            r.get::<_,String>(6)?, r.get::<_,String>(7)?, r.get::<_,String>(8)?,
+            r.get::<_,f64>(9)?, r.get::<_,f64>(10)?, r.get::<_,f64>(11)?, r.get::<_,f64>(12)?,
+            r.get::<_,f64>(13)?, r.get::<_,f64>(14)?, r.get::<_,f64>(15)?,
+            r.get::<_,f64>(16)?, r.get::<_,f64>(17)?, r.get::<_,Option<String>>(18)?,
+            r.get::<_,Option<i64>>(19)?, r.get::<_,Option<String>>(20)?, r.get::<_,String>(21)?))
     }).map_err(|e| e.to_string())?
     .filter_map(|r| r.ok())
-    .map(|(id, invoice_code, patient_id, patient_name, issue_date, due_date, status, subtotal, discount, tax, cgst, sgst, igst, total, paid_amount, balance, payment_method, insurance_claim_id, notes, created_at)| {
+    .map(|(id, invoice_code, patient_id, patient_name, patient_phone, patient_email, issue_date, due_date, status, subtotal, discount, tax, cgst, sgst, igst, total, paid_amount, balance, payment_method, insurance_claim_id, notes, created_at)| {
         let items = load_invoice_items(&conn, id);
-        Invoice { id, invoice_code, patient_id, patient_name, issue_date, due_date, status, items, subtotal, discount, tax, cgst, sgst, igst, total, paid_amount, balance, payment_method, insurance_claim_id, notes, created_at }
+        Invoice { id, invoice_code, patient_id, patient_name, patient_phone, patient_email, issue_date, due_date, status, items, subtotal, discount, tax, cgst, sgst, igst, total, paid_amount, balance, payment_method, insurance_claim_id, notes, created_at }
     }).collect();
     Ok(invoices)
 }
@@ -1119,12 +1343,15 @@ pub fn get_invoices(state: State<AppState>, status: Option<String>, patient_id: 
 pub fn get_invoice_by_id(state: State<AppState>, id: i64) -> Result<Invoice, String> {
     let conn = state.pool.get().map_err(|e| e.to_string())?;
     let inv = conn.query_row(
-        "SELECT i.id, i.invoice_code, i.patient_id, p.full_name, i.issue_date, i.due_date, i.status, i.subtotal, i.discount, i.tax, i.cgst, i.sgst, i.igst, i.total, i.paid_amount, i.balance, i.payment_method, i.insurance_claim_id, i.notes, i.created_at FROM invoices i JOIN patients p ON i.patient_id = p.id WHERE i.id = ?1",
+        "SELECT i.id, i.invoice_code, i.patient_id, p.full_name, p.phone, p.email, i.issue_date, i.due_date, i.status, i.subtotal, i.discount, i.tax, i.cgst, i.sgst, i.igst, i.total, i.paid_amount, i.balance, i.payment_method, i.insurance_claim_id, i.notes, i.created_at FROM invoices i JOIN patients p ON i.patient_id = p.id WHERE i.id = ?1",
         params![id],
-        |r| Ok((r.get::<_,i64>(0)?, r.get::<_,String>(1)?, r.get::<_,i64>(2)?, r.get::<_,Option<String>>(3)?, r.get::<_,String>(4)?, r.get::<_,String>(5)?, r.get::<_,String>(6)?, r.get::<_,f64>(7)?, r.get::<_,f64>(8)?, r.get::<_,f64>(9)?, r.get::<_,f64>(10)?, r.get::<_,f64>(11)?, r.get::<_,f64>(12)?, r.get::<_,f64>(13)?, r.get::<_,f64>(14)?, r.get::<_,f64>(15)?, r.get::<_,Option<String>>(16)?, r.get::<_,Option<i64>>(17)?, r.get::<_,Option<String>>(18)?, r.get::<_,String>(19)?)),
+        |r| Ok((r.get::<_,i64>(0)?, r.get::<_,String>(1)?, r.get::<_,i64>(2)?, r.get::<_,Option<String>>(3)?,
+                r.get::<_,Option<String>>(4)?, r.get::<_,Option<String>>(5)?,
+                r.get::<_,String>(6)?, r.get::<_,String>(7)?, r.get::<_,String>(8)?,
+                r.get::<_,f64>(9)?, r.get::<_,f64>(10)?, r.get::<_,f64>(11)?, r.get::<_,f64>(12)?, r.get::<_,f64>(13)?, r.get::<_,f64>(14)?, r.get::<_,f64>(15)?, r.get::<_,f64>(16)?, r.get::<_,f64>(17)?, r.get::<_,Option<String>>(18)?, r.get::<_,Option<i64>>(19)?, r.get::<_,Option<String>>(20)?, r.get::<_,String>(21)?)),
     ).map_err(|e| e.to_string())?;
     let items = load_invoice_items(&conn, id);
-    Ok(Invoice { id: inv.0, invoice_code: inv.1, patient_id: inv.2, patient_name: inv.3, issue_date: inv.4, due_date: inv.5, status: inv.6, subtotal: inv.7, discount: inv.8, tax: inv.9, cgst: inv.10, sgst: inv.11, igst: inv.12, total: inv.13, paid_amount: inv.14, balance: inv.15, payment_method: inv.16, insurance_claim_id: inv.17, notes: inv.18, created_at: inv.19, items })
+    Ok(Invoice { id: inv.0, invoice_code: inv.1, patient_id: inv.2, patient_name: inv.3, patient_phone: inv.4, patient_email: inv.5, issue_date: inv.6, due_date: inv.7, status: inv.8, subtotal: inv.9, discount: inv.10, tax: inv.11, cgst: inv.12, sgst: inv.13, igst: inv.14, total: inv.15, paid_amount: inv.16, balance: inv.17, payment_method: inv.18, insurance_claim_id: inv.19, notes: inv.20, created_at: inv.21, items })
 }
 
 #[tauri::command]
@@ -1155,8 +1382,8 @@ pub fn create_invoice(state: State<AppState>, data: CreateInvoice, items: Vec<Cr
     }
     for item in &items {
         let item_total = item.quantity as f64 * item.unit_price;
-        tx.execute("INSERT INTO invoice_items (invoice_id, description, category, quantity, unit_price, total) VALUES (?1,?2,?3,?4,?5,?6)",
-            params![inv_id, item.description, item.category, item.quantity, item.unit_price, item_total]).map_err(|e| e.to_string())?;
+        tx.execute("INSERT INTO invoice_items (invoice_id, description, category, quantity, unit_price, total, hsn_code) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+            params![inv_id, item.description, item.category, item.quantity, item.unit_price, item_total, item.hsn_code]).map_err(|e| e.to_string())?;
     }
 
     tx.commit().map_err(|e| e.to_string())?;
@@ -1232,6 +1459,7 @@ pub fn export_invoice_pdf(state: State<AppState>, invoice_id: i64) -> Result<Str
     let h_addr: String = conn.query_row("SELECT value FROM settings WHERE key = 'hospital_address'", [], |r| r.get(0)).unwrap_or_else(|_| "".to_string());
     let h_city: String = conn.query_row("SELECT value FROM settings WHERE key = 'hospital_city'", [], |r| r.get(0)).unwrap_or_else(|_| "".to_string());
     let h_phone: String = conn.query_row("SELECT value FROM settings WHERE key = 'hospital_phone'", [], |r| r.get(0)).unwrap_or_else(|_| "".to_string());
+    let h_gst: String = conn.query_row("SELECT value FROM settings WHERE key = 'hospital_gstin'", [], |r| r.get(0)).unwrap_or_else(|_| "".to_string());
 
     let (doc, page1, layer1) = PdfDocument::new(&format!("Invoice {}", invoice.invoice_code), Mm(210.0), Mm(297.0), "Layer 1");
     let font = doc.add_builtin_font(BuiltinFont::Helvetica).unwrap();
@@ -1243,6 +1471,9 @@ pub fn export_invoice_pdf(state: State<AppState>, invoice_id: i64) -> Result<Str
     
     current_layer.use_text(&format!("{}, {}", h_addr, h_city), 9.0, Mm(20.0), Mm(271.0), &font);
     current_layer.use_text(&format!("Phone: {}", h_phone), 9.0, Mm(20.0), Mm(266.0), &font);
+    if !h_gst.is_empty() {
+        current_layer.use_text(&format!("GSTIN: {}", h_gst), 9.0, Mm(20.0), Mm(261.0), &font);
+    }
 
     current_layer.use_text(&format!("Invoice #: {}", invoice.invoice_code), 12.0, Mm(20.0), Mm(255.0), &font);
     current_layer.use_text(&format!("Date: {}", invoice.issue_date), 12.0, Mm(20.0), Mm(258.0), &font);
@@ -1252,6 +1483,7 @@ pub fn export_invoice_pdf(state: State<AppState>, invoice_id: i64) -> Result<Str
     current_layer.use_text(&patient_name, 12.0, Mm(20.0), Mm(228.0), &font);
     
     current_layer.use_text("Description", 10.0, Mm(20.0), Mm(205.0), &font_bold);
+    current_layer.use_text("HSN", 10.0, Mm(90.0), Mm(205.0), &font_bold);
     current_layer.use_text("Qty", 10.0, Mm(110.0), Mm(205.0), &font_bold);
     current_layer.use_text("Rate", 10.0, Mm(130.0), Mm(205.0), &font_bold);
     current_layer.use_text("Amount", 10.0, Mm(160.0), Mm(205.0), &font_bold);
@@ -1259,6 +1491,7 @@ pub fn export_invoice_pdf(state: State<AppState>, invoice_id: i64) -> Result<Str
     let mut y_pos = 195.0;
     for item in &items {
         current_layer.use_text(&item.description, 10.0, Mm(20.0), Mm(y_pos), &font);
+        current_layer.use_text(item.hsn_code.as_deref().unwrap_or("-"), 10.0, Mm(90.0), Mm(y_pos), &font);
         current_layer.use_text(&item.quantity.to_string(), 10.0, Mm(110.0), Mm(y_pos), &font);
         current_layer.use_text(&format!("{:.2}", item.unit_price), 10.0, Mm(130.0), Mm(y_pos), &font);
         current_layer.use_text(&format!("{:.2}", item.total), 10.0, Mm(160.0), Mm(y_pos), &font);
@@ -1864,15 +2097,15 @@ pub fn send_message(state: State<AppState>, data: SendMessage) -> Result<Message
         None => None,
     };
     conn.execute(
-        "INSERT INTO message_logs (patient_id, phone, message_type, template_name, message_body, status) VALUES (?1,?2,?3,?4,?5,'Sent')",
-        params![data.patient_id, data.phone, data.message_type, data.template_name, data.message_body],
+        "INSERT INTO message_logs (patient_id, phone, email, message_type, template_name, message_body, status) VALUES (?1,?2,?3,?4,?5,?6,'Sent')",
+        params![data.patient_id, data.phone, data.email, data.message_type, data.template_name, data.message_body],
     ).map_err(|e| e.to_string())?;
     let id = conn.last_insert_rowid();
-    audit::log(&state.pool, "System", "Message sent", "message_log", Some(id), Some(&format!("{}: {}", data.message_type, data.phone)));
+    audit::log(&state.pool, "System", "Message sent", "message_log", Some(id), Some(&format!("{}: {}/{}", data.message_type, data.phone, data.email.as_deref().unwrap_or("-"))));
     conn.query_row(
-        "SELECT id, patient_id, phone, message_type, template_name, message_body, status, sent_at, error_message, created_at FROM message_logs WHERE id = ?1",
+        "SELECT id, patient_id, phone, email, message_type, template_name, message_body, status, sent_at, error_message, created_at FROM message_logs WHERE id = ?1",
         params![id],
-        |r| Ok(MessageLog { id: r.get(0)?, patient_id: r.get(1)?, patient_name, phone: r.get(2)?, message_type: r.get(3)?, template_name: r.get(4)?, message_body: r.get(5)?, status: r.get(6)?, sent_at: r.get(7)?, error_message: r.get(8)?, created_at: r.get(9)? }),
+        |r| Ok(MessageLog { id: r.get(0)?, patient_id: r.get(1)?, patient_name, phone: r.get(2)?, email: r.get(3)?, message_type: r.get(4)?, template_name: r.get(5)?, message_body: r.get(6)?, status: r.get(7)?, sent_at: r.get(8)?, error_message: r.get(9)?, created_at: r.get(10)? }),
     ).map_err(|e| e.to_string())
 }
 
@@ -1881,13 +2114,13 @@ pub fn get_message_logs(state: State<AppState>, limit: Option<i64>) -> Result<Ve
     let conn = state.pool.get().map_err(|e| e.to_string())?;
     let limit = limit.unwrap_or(50);
     let mut stmt = conn.prepare(
-        "SELECT m.id, m.patient_id, p.full_name, m.phone, m.message_type, m.template_name, m.message_body, m.status, m.sent_at, m.error_message, m.created_at 
+        "SELECT m.id, m.patient_id, p.full_name, m.phone, m.email, m.message_type, m.template_name, m.message_body, m.status, m.sent_at, m.error_message, m.created_at
          FROM message_logs m LEFT JOIN patients p ON m.patient_id = p.id ORDER BY m.id DESC LIMIT ?1"
     ).map_err(|e| e.to_string())?;
     let items = stmt.query_map(params![limit], |r| Ok(MessageLog {
-        id: r.get(0)?, patient_id: r.get(1)?, patient_name: r.get(2)?, phone: r.get(3)?,
-        message_type: r.get(4)?, template_name: r.get(5)?, message_body: r.get(6)?, status: r.get(7)?,
-        sent_at: r.get(8)?, error_message: r.get(9)?, created_at: r.get(10)?,
+        id: r.get(0)?, patient_id: r.get(1)?, patient_name: r.get(2)?, phone: r.get(3)?, email: r.get(4)?,
+        message_type: r.get(5)?, template_name: r.get(6)?, message_body: r.get(7)?, status: r.get(8)?,
+        sent_at: r.get(9)?, error_message: r.get(10)?, created_at: r.get(11)?,
     })).map_err(|e| e.to_string())?
     .filter_map(|r| r.ok()).collect();
     Ok(items)
@@ -2289,16 +2522,17 @@ pub fn update_token_status(app: AppHandle, state: State<AppState>, id: i64, new_
 pub fn get_discharge_summaries(state: State<AppState>, patient_id: Option<i64>) -> Result<Vec<DischargeSummary>, String> {
     let conn = state.pool.get().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
-        "SELECT d.id, d.summary_code, d.patient_id, p.full_name, d.admission_date, d.discharge_date, d.discharge_type, d.diagnosis, d.procedure_done, d.history_present_illness, d.examination_findings, d.investigations, d.treatment_given, d.advice_on_discharge, d.follow_up_date, d.created_by, dr.full_name, d.created_at 
+        "SELECT d.id, d.summary_code, d.patient_id, p.full_name, p.phone, p.email, d.admission_date, d.discharge_date, d.discharge_type, d.diagnosis, d.procedure_done, d.history_present_illness, d.examination_findings, d.investigations, d.treatment_given, d.advice_on_discharge, d.follow_up_date, d.created_by, dr.full_name, d.created_at
          FROM discharge_summaries d JOIN patients p ON d.patient_id = p.id JOIN doctors dr ON d.created_by = dr.id WHERE (?1 IS NULL OR d.patient_id = ?1) ORDER BY d.id DESC"
     ).map_err(|e| e.to_string())?;
     let items: Vec<DischargeSummary> = stmt.query_map(params![patient_id], |r| Ok(DischargeSummary {
         id: r.get(0)?, summary_code: r.get(1)?, patient_id: r.get(2)?, patient_name: r.get(3)?,
-        admission_date: r.get(4)?, discharge_date: r.get(5)?, discharge_type: r.get(6)?, diagnosis: r.get(7)?,
-        procedure_done: r.get(8)?, history_present_illness: r.get(9)?, examination_findings: r.get(10)?,
-        investigations: r.get(11)?, treatment_given: r.get(12)?, advice_on_discharge: r.get(13)?,
-        follow_up_date: r.get(14)?, created_by: r.get(15)?, doctor_name: r.get(16)?, medications: vec![],
-        created_at: r.get(17)?,
+        patient_phone: r.get(4)?, patient_email: r.get(5)?,
+        admission_date: r.get(6)?, discharge_date: r.get(7)?, discharge_type: r.get(8)?, diagnosis: r.get(9)?,
+        procedure_done: r.get(10)?, history_present_illness: r.get(11)?, examination_findings: r.get(12)?,
+        investigations: r.get(13)?, treatment_given: r.get(14)?, advice_on_discharge: r.get(15)?,
+        follow_up_date: r.get(16)?, created_by: r.get(17)?, doctor_name: r.get(18)?, medications: vec![],
+        created_at: r.get(19)?,
     })).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
     let mut result = vec![];
     for mut item in items {
@@ -2333,13 +2567,13 @@ pub fn create_discharge_summary(state: State<AppState>, data: CreateDischargeSum
 
 fn get_discharge_summary_by_id(state: State<AppState>, id: i64) -> Result<DischargeSummary, String> {
     let conn = state.pool.get().map_err(|e| e.to_string())?;
-    let (pat_name, doc_name): (String, String) = conn.query_row(
-        "SELECT p.full_name, d.full_name FROM discharge_summaries ds
+    let (pat_name, pat_phone, pat_email, doc_name): (String, Option<String>, Option<String>, String) = conn.query_row(
+        "SELECT p.full_name, p.phone, p.email, d.full_name FROM discharge_summaries ds
          JOIN patients p ON ds.patient_id = p.id
          JOIN doctors d ON ds.created_by = d.id
          WHERE ds.id = ?1",
         params![id],
-        |r| Ok((r.get(0)?, r.get(1)?))
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
     ).map_err(|e| e.to_string())?;
 
     let mut med_stmt = conn.prepare("SELECT id, discharge_summary_id, medication, dosage, duration, instructions FROM discharge_medications WHERE discharge_summary_id = ?1").map_err(|e| e.to_string())?;
@@ -2347,7 +2581,8 @@ fn get_discharge_summary_by_id(state: State<AppState>, id: i64) -> Result<Discha
 
     conn.query_row("SELECT id, summary_code, patient_id, admission_date, discharge_date, discharge_type, diagnosis, procedure_done, history_present_illness, examination_findings, investigations, treatment_given, advice_on_discharge, follow_up_date, created_by, created_at FROM discharge_summaries WHERE id = ?1", params![id],
         |r| Ok(DischargeSummary {
-            id: r.get(0)?, summary_code: r.get(1)?, patient_id: r.get(2)?, patient_name: Some(pat_name),
+            id: r.get(0)?, summary_code: r.get(1)?, patient_id: r.get(2)?, patient_name: Some(pat_name.clone()),
+            patient_phone: pat_phone.clone(), patient_email: pat_email.clone(),
             admission_date: r.get(3)?, discharge_date: r.get(4)?, discharge_type: r.get(5)?, diagnosis: r.get(6)?,
             procedure_done: r.get(7)?, history_present_illness: r.get(8)?, examination_findings: r.get(9)?,
             investigations: r.get(10)?, treatment_given: r.get(11)?, advice_on_discharge: r.get(12)?,
@@ -3176,6 +3411,91 @@ pub fn export_patients_csv(state: State<AppState>) -> Result<String, String> {
     std::fs::write(&path, csv).map_err(|e| e.to_string())?;
 
     Ok(path)
+}
+
+#[tauri::command]
+pub fn export_gst_csv(state: State<AppState>, from: String, to: String) -> Result<String, String> {
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare("SELECT invoice_code, issue_date, subtotal, cgst, sgst, igst, tax, total FROM invoices WHERE issue_date BETWEEN ?1 AND ?2").map_err(|e| e.to_string())?;
+    let rows = stmt.query_map(params![from, to], |r| {
+        Ok(format!("{},{},{},{},{},{},{},{}",
+            escape_csv(&r.get::<_,String>(0)?), escape_csv(&r.get::<_,String>(1)?),
+            r.get::<_,f64>(2)?, r.get::<_,f64>(3)?, r.get::<_,f64>(4)?, r.get::<_,f64>(5)?, r.get::<_,f64>(6)?, r.get::<_,f64>(7)?))
+    }).map_err(|e| e.to_string())?;
+
+    let mut csv = String::from("Invoice #,Date,Subtotal,CGST,SGST,IGST,Total Tax,Grand Total\n");
+    for row in rows {
+        if let Ok(r) = row { csv.push_str(&r); csv.push('\n'); }
+    }
+
+    let base_path = if cfg!(windows) { std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string()) } else { std::env::var("HOME").map(|h| format!("{}/.local/share", h)).unwrap_or_else(|_| ".".to_string()) };
+    let dir_path = format!("{}/MediCore/exports", base_path);
+    let path = format!("{}/gst_report_{}_{}.csv", dir_path, from, to);
+    std::fs::create_dir_all(&dir_path).map_err(|e| e.to_string())?;
+    std::fs::write(&path, csv).map_err(|e| e.to_string())?;
+    Ok(path)
+}
+
+// ─── SUPPORT TICKETS ─────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn get_support_tickets(state: State<AppState>, status: Option<String>) -> Result<Vec<SupportTicket>, String> {
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(
+        "SELECT t.id, t.ticket_code, t.patient_id, p.full_name, t.subject, t.description, t.category, t.priority, t.status, t.assigned_to, u.full_name, t.created_at, t.updated_at
+         FROM support_tickets t
+         LEFT JOIN patients p ON t.patient_id = p.id
+         LEFT JOIN users u ON t.assigned_to = u.id
+         WHERE (?1 IS NULL OR t.status = ?1) ORDER BY t.id DESC"
+    ).map_err(|e| e.to_string())?;
+    let items = stmt.query_map(params![status], |r| Ok(SupportTicket {
+        id: r.get(0)?, ticket_code: r.get(1)?, patient_id: r.get(2)?, patient_name: r.get(3)?, subject: r.get(4)?,
+        description: r.get(5)?, category: r.get(6)?, priority: r.get(7)?, status: r.get(8)?, assigned_to: r.get(9)?,
+        assigned_user_name: r.get(10)?, created_at: r.get(11)?, updated_at: r.get(12)?,
+    })).map_err(|e| e.to_string())?
+    .filter_map(|r| r.ok()).collect();
+    Ok(items)
+}
+
+#[tauri::command]
+pub fn create_support_ticket(state: State<AppState>, data: CreateSupportTicket) -> Result<SupportTicket, String> {
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    let code = new_code("TKT");
+    conn.execute(
+        "INSERT INTO support_tickets (ticket_code, patient_id, subject, description, category, priority, assigned_to) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![code, data.patient_id, data.subject, data.description, data.category, data.priority.unwrap_or_else(|| "Medium".to_string()), data.assigned_to],
+    ).map_err(|e| e.to_string())?;
+    let id = conn.last_insert_rowid();
+    audit::log(&state.pool, "System", "Support ticket created", "support", Some(id), Some(&code));
+
+    conn.query_row(
+        "SELECT t.id, t.ticket_code, t.patient_id, p.full_name, t.subject, t.description, t.category, t.priority, t.status, t.assigned_to, u.full_name, t.created_at, t.updated_at
+         FROM support_tickets t LEFT JOIN patients p ON t.patient_id = p.id LEFT JOIN users u ON t.assigned_to = u.id WHERE t.id = ?1",
+        params![id],
+        |r| Ok(SupportTicket {
+            id: r.get(0)?, ticket_code: r.get(1)?, patient_id: r.get(2)?, patient_name: r.get(3)?, subject: r.get(4)?,
+            description: r.get(5)?, category: r.get(6)?, priority: r.get(7)?, status: r.get(8)?, assigned_to: r.get(9)?,
+            assigned_user_name: r.get(10)?, created_at: r.get(11)?, updated_at: r.get(12)?,
+        })
+    ).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn update_support_ticket(state: State<AppState>, id: i64, data: UpdateSupportTicket) -> Result<(), String> {
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+
+    if let Some(status) = data.status {
+        conn.execute("UPDATE support_tickets SET status = ?1, updated_at = datetime('now') WHERE id = ?2", params![status, id]).map_err(|e| e.to_string())?;
+    }
+    if let Some(assigned_to) = data.assigned_to {
+        conn.execute("UPDATE support_tickets SET assigned_to = ?1, updated_at = datetime('now') WHERE id = ?2", params![assigned_to, id]).map_err(|e| e.to_string())?;
+    }
+    if let Some(priority) = data.priority {
+        conn.execute("UPDATE support_tickets SET priority = ?1, updated_at = datetime('now') WHERE id = ?2", params![priority, id]).map_err(|e| e.to_string())?;
+    }
+
+    audit::log(&state.pool, "System", "Support ticket updated", "support", Some(id), None);
+    Ok(())
 }
 
 #[tauri::command]

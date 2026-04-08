@@ -38,6 +38,7 @@ pub fn run() {
             commands::get_recent_activity,
             commands::get_today_admissions,
             commands::get_today_discharges,
+            commands::open_file,
             // Patients
             commands::get_patients,
             commands::get_patient_by_id,
@@ -72,6 +73,7 @@ pub fn run() {
             commands::issue_prescription,
             commands::cancel_prescription,
             commands::refill_prescription,
+            commands::export_prescription_pdf,
             commands::get_prescriptions_due_refill,
             // Lab
             commands::get_lab_tests,
@@ -165,6 +167,7 @@ pub fn run() {
             // Discharge Summary
             commands::get_discharge_summaries,
             commands::create_discharge_summary,
+            commands::export_discharge_summary_pdf,
             // Operation Theatre
             commands::get_ot_schedules,
             commands::create_ot_schedule,
@@ -214,9 +217,14 @@ pub fn run() {
             commands::update_visit_diagnosis,
             commands::update_visit_status,
             commands::get_visit_charges,
+            // Support Tickets
+            commands::get_support_tickets,
+            commands::create_support_ticket,
+            commands::update_support_ticket,
             // Data Export
             commands::export_patients_csv,
             commands::export_invoices_csv,
+            commands::export_gst_csv,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

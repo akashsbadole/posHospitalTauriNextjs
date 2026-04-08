@@ -43,6 +43,7 @@ export interface Appointment {
 
 export interface Prescription {
   id: number; rx_code: string; patient_id: number; patient_name?: string;
+  patient_phone?: string; patient_email?: string;
   doctor_id: number; doctor_name?: string; issue_date: string; valid_until: string;
   status: "Active" | "Expired" | "Cancelled" | "Issued"; drugs: PrescriptionDrug[];
   diagnosis?: string; notes?: string; visit_id?: number; created_at: string;
@@ -57,6 +58,7 @@ export interface PrescriptionDrug {
 
 export interface LabTest {
   id: number; lab_code: string; patient_id: number; patient_name?: string;
+  patient_phone?: string; patient_email?: string;
   doctor_id: number; doctor_name?: string; test_name: string; test_category: LabCategory;
   ordered_date: string; result_date?: string;
   status: "Ordered" | "Sample Collected" | "Processing" | "Ready" | "Reviewed";
@@ -78,6 +80,7 @@ export interface Bed {
 
 export interface Invoice {
   id: number; invoice_code: string; patient_id: number; patient_name?: string;
+  patient_phone?: string; patient_email?: string;
   issue_date: string; due_date: string; status: InvoiceStatus; items: InvoiceItem[];
   subtotal: number; discount: number; tax: number;
   cgst: number; sgst: number; igst: number;
@@ -89,6 +92,7 @@ export interface Invoice {
 export interface InvoiceItem {
   id: number; invoice_id: number; description: string;
   category: "Consultation" | "Lab" | "Surgery" | "Pharmacy" | "Ward" | "Radiology" | "Procedure";
+  hsn_code?: string;
   quantity: number; unit_price: number; total: number;
 }
 
@@ -166,12 +170,12 @@ export interface PaymentBatchItem {
 
 // WhatsApp & SMS
 export interface MessageTemplate {
-  id: number; template_name: string; message_type: "SMS" | "WhatsApp" | "Both";
+  id: number; template_name: string; message_type: "SMS" | "WhatsApp" | "Email" | "Both" | "All";
   template_body: string; is_active: boolean; created_at: string;
 }
 
 export interface MessageLog {
-  id: number; patient_id?: number; patient_name?: string; phone: string;
+  id: number; patient_id?: number; patient_name?: string; phone: string; email?: string;
   message_type: string; template_name?: string; message_body: string;
   status: string; sent_at?: string; error_message?: string; created_at: string;
 }
@@ -257,6 +261,7 @@ export interface OpdToken {
 // Discharge Summary
 export interface DischargeSummary {
   id: number; summary_code: string; patient_id: number; patient_name?: string;
+  patient_phone?: string; patient_email?: string;
   admission_date: string; discharge_date: string;
   discharge_type: "Regular" | "LAMA" | "DOR" | "Transfer";
   diagnosis: string; procedure_done?: string;
@@ -403,4 +408,20 @@ export interface PatientFeedback {
   comments: string;
   department?: string;
   created_at: string;
+}
+
+export interface SupportTicket {
+  id: number;
+  ticket_code: string;
+  patient_id?: number;
+  patient_name?: string;
+  subject: string;
+  description: string;
+  category: string;
+  priority: "Low" | "Medium" | "High" | "Urgent";
+  status: "Open" | "InProgress" | "Resolved" | "Closed";
+  assigned_to?: number;
+  assigned_user_name?: string;
+  created_at: string;
+  updated_at: string;
 }

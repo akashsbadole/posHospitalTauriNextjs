@@ -2,9 +2,10 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getInvoices, recordPayment, exportInvoicePdf } from "@/lib/tauri";
 import { useState } from "react";
-import { Plus, Download, Search, Eye, CreditCard, FileText } from "lucide-react";
+import { Plus, Download, Search, Eye, CreditCard, FileText, Share2, Mail } from "lucide-react";
 import { toast } from "sonner";
 import type { InvoiceStatus, Invoice } from "@/types";
+import { sendMessage } from "@/lib/tauri";
 import { NewInvoiceModal } from "@/components/modules/NewInvoiceModal";
 import { PartialPaymentModal } from "@/components/modules/PartialPaymentModal";
 import { format } from "date-fns";
@@ -50,12 +51,47 @@ export default function BillingPage() {
     }
   };
 
+  const handleExportGst = async () => {
+    try {
+      const { exportGstCsv } = await import("@/lib/tauri");
+      // Default to current month
+      const from = format(new Date().setDate(1), "yyyy-MM-dd");
+      const to = format(new Date(), "yyyy-MM-dd");
+      const path = await exportGstCsv(from, to);
+      toast.success(`GST Report exported to ${path}`);
+    } catch (e) {
+      toast.error("Failed to export GST: " + e);
+    }
+  };
+
   const handleDownloadPdf = async (invoiceId: number) => {
     try {
+      const { exportInvoicePdf, openFile } = await import("@/lib/tauri");
       const path = await exportInvoicePdf(invoiceId);
       toast.success(`Invoice PDF saved to ${path}`);
+      await openFile(path);
     } catch (e) {
       toast.error("Failed to export PDF: " + e);
+    }
+  };
+
+  const handleShare = async (inv: Invoice, channel: "WhatsApp" | "Email") => {
+    const contact = channel === "WhatsApp" ? inv.patient_phone : inv.patient_email;
+    if (!contact) {
+      toast.error(`Patient ${channel === "WhatsApp" ? "phone number" : "email"} not found`);
+      return;
+    }
+    try {
+      await sendMessage({
+        patient_id: inv.patient_id,
+        phone: inv.patient_phone || "",
+        email: inv.patient_email || "",
+        message_type: channel,
+        message_body: `Dear ${inv.patient_name}, your invoice ${inv.invoice_code} for ₹${inv.total} has been generated. Status: ${inv.status}.`,
+      });
+      toast.success(`Invoice shared via ${channel}!`);
+    } catch (e) {
+      toast.error("Failed to share: " + e);
     }
   };
 
@@ -64,6 +100,7 @@ export default function BillingPage() {
       <div className="page-header">
         <div><h1 className="page-title">Billing & Invoices</h1><p className="page-subtitle">{invoices.length} total invoices</p></div>
         <div className="flex gap-2.5">
+          <button onClick={handleExportGst} className="btn btn-ghost !text-purple hover:!bg-purple/10 border-purple/20"><FileText size={13} />GST Report</button>
           <button onClick={handleExportCSV} className="btn btn-ghost"><Download size={13} />Export</button>
           <button onClick={() => setShowNewModal(true)} className="btn btn-primary"><Plus size={14} />New Invoice</button>
         </div>
@@ -140,9 +177,11 @@ export default function BillingPage() {
                     <td><span className={`badge ${STATUS_BADGE[inv.status]}`}>{inv.status}</span></td>
                     <td>
                       <div className="flex gap-1.5">
-                        <button className="icon-btn"><Eye size={12} /></button>
-                        {inv.balance>0 && <button onClick={() => setPaymentInvoice(inv)} className="icon-btn hover:!text-success"><CreditCard size={12} /></button>}
-                        <button onClick={() => handleDownloadPdf(inv.id)} className="icon-btn hover:!text-accent"><Download size={12} /></button>
+                        <button className="icon-btn" title="View Details"><Eye size={12} /></button>
+                        {inv.balance>0 && <button onClick={() => setPaymentInvoice(inv)} title="Record Payment" className="icon-btn hover:!text-success"><CreditCard size={12} /></button>}
+                        <button onClick={() => handleDownloadPdf(inv.id)} title="Download / Print PDF" className="icon-btn hover:!text-accent"><Download size={12} /></button>
+                        <button onClick={() => handleShare(inv, "WhatsApp")} title="Share via WhatsApp" className="icon-btn hover:!text-green-500"><Share2 size={12} /></button>
+                        <button onClick={() => handleShare(inv, "Email")} title="Share via Email" className="icon-btn hover:!text-blue"><Mail size={12} /></button>
                       </div>
                     </td>
                   </tr>
