@@ -1,9 +1,10 @@
 "use client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getDoctors, updateDoctorStatus, getStaff } from "@/lib/tauri";
+import { getDoctors, updateDoctorStatus, getStaff, deleteDoctor, deleteStaff } from "@/lib/tauri";
 import { useState } from "react";
 import { Plus, Search, Edit, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { ConfirmDialog } from "@/components/modules/ConfirmDialog";
 import type { Doctor, Staff } from "@/types";
 import { NewDoctorModal } from "@/components/modules/NewDoctorModal";
 import { EditDoctorModal } from "@/components/modules/EditDoctorModal";
@@ -23,6 +24,7 @@ export default function StaffPage() {
   const [showNewModal, setShowNewModal] = useState(false);
   const [editDoctor, setEditDoctor] = useState<Doctor | null>(null);
   const [editStaff, setEditStaff] = useState<Staff | null>(null);
+  const [deleteId, setDeleteId] = useState<{ id: number; type: "doctor" | "staff" } | null>(null);
   const qc = useQueryClient();
 
   const { data: doctors = [], isLoading: loadingDocs } = useQuery({ queryKey:["doctors"], queryFn:getDoctors });
@@ -31,6 +33,20 @@ export default function StaffPage() {
   const statusMut = useMutation({
     mutationFn:({id,status}:{id:number;status:Doctor["availability_status"]})=>updateDoctorStatus(id,status),
     onSuccess:()=>{qc.invalidateQueries({queryKey:["doctors"]});toast.success("Status updated");},
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: async (id: number) => {
+      if (deleteId?.type === "doctor") return deleteDoctor(id);
+      if (deleteId?.type === "staff") return deleteStaff(id);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["doctors"] });
+      qc.invalidateQueries({ queryKey: ["staff"] });
+      toast.success("Record deleted");
+      setDeleteId(null);
+    },
+    onError: () => toast.error("Delete failed"),
   });
 
   const filteredDocs = doctors.filter(d=>!search||d.full_name.toLowerCase().includes(search.toLowerCase())||d.specialization.toLowerCase().includes(search.toLowerCase()));
@@ -102,7 +118,7 @@ export default function StaffPage() {
                             {["Available","In Surgery","On Round","Off Duty","On Leave"].map(s=><option key={s}>{s}</option>)}
                           </select>
                         </td>
-                        <td><div className="flex gap-1.5"><button onClick={() => setEditDoctor(d)} className="icon-btn hover:!text-accent"><Edit size={12} /></button><button className="icon-btn hover:!text-danger"><Trash2 size={12} /></button></div></td>
+                        <td><div className="flex gap-1.5"><button onClick={() => setEditDoctor(d)} className="icon-btn hover:!text-accent"><Edit size={12} /></button><button onClick={() => setDeleteId({ id: d.id, type: "doctor" })} className="icon-btn hover:!text-danger"><Trash2 size={12} /></button></div></td>
                       </tr>
                     );
                   })}
@@ -134,7 +150,7 @@ export default function StaffPage() {
                         <td className="text-muted text-[12px] font-mono">{s.phone}</td>
                         <td className="text-muted text-[12px]">{s.join_date}</td>
                         <td><span className={`badge ${s.status==="Active"?"badge-green":s.status==="On Leave"?"badge-yellow":"badge-red"}`}>{s.status}</span></td>
-                        <td><div className="flex gap-1.5"><button className="icon-btn hover:!text-accent"><Edit size={12} /></button><button className="icon-btn hover:!text-danger"><Trash2 size={12} /></button></div></td>
+                        <td><div className="flex gap-1.5"><button onClick={() => setEditStaff(s)} className="icon-btn hover:!text-accent"><Edit size={12} /></button><button onClick={() => setDeleteId({ id: s.id, type: "staff" })} className="icon-btn hover:!text-danger"><Trash2 size={12} /></button></div></td>
                       </tr>
                     );
                   })}
@@ -184,6 +200,17 @@ export default function StaffPage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!deleteId}
+        title={`Delete ${deleteId?.type === "doctor" ? "Doctor" : "Staff Member"}`}
+        message="Are you sure you want to delete this record? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+        loading={deleteMut.isPending}
+        onConfirm={() => deleteId && deleteMut.mutate(deleteId.id)}
+        onCancel={() => setDeleteId(null)}
+      />
 
       <NewDoctorModal open={showNewModal} onClose={() => setShowNewModal(false)} />
       <EditDoctorModal open={!!editDoctor} onClose={() => setEditDoctor(null)} doctor={editDoctor} />

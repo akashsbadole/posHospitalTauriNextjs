@@ -1,13 +1,14 @@
 "use client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getAppointments, updateAppointmentStatus } from "@/lib/tauri";
+import { getAppointments, updateAppointmentStatus, deleteAppointment } from "@/lib/tauri";
 import { useState } from "react";
 import { format, addDays, subDays } from "date-fns";
-import { ChevronLeft, ChevronRight, Plus, Check, X, Clock, Calendar, List, UserCheck } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Check, X, Clock, Calendar, List, UserCheck, Trash2 } from "lucide-react";
 import type { AppointmentStatus } from "@/types";
 import { toast } from "sonner";
 import { NewAppointmentModal } from "@/components/modules/NewAppointmentModal";
 import { WeeklyCalendar } from "@/components/modules/WeeklyCalendar";
+import { ConfirmDialog } from "@/components/modules/ConfirmDialog";
 
 const STATUS_BADGE: Record<AppointmentStatus,string> = {
   "Scheduled":"badge-blue","Checked In":"badge-green","In Progress":"badge-yellow",
@@ -19,6 +20,7 @@ const SLOTS = ["08:00","08:30","09:00","09:30","10:00","10:30","11:00","11:30","
 export default function AppointmentsPage() {
   const [date, setDate] = useState(new Date());
   const [showNewModal, setShowNewModal] = useState(false);
+  const [deleteId, setDeleteId] = useState<number | null>(null);
   const [view, setView] = useState<"day"|"week"|"queue">("day");
   const qc = useQueryClient();
   const ds = format(date, "yyyy-MM-dd");
@@ -28,6 +30,16 @@ export default function AppointmentsPage() {
     mutationFn: ({ id, status }: { id:number; status:AppointmentStatus }) => updateAppointmentStatus(id, status),
     onSuccess: () => { qc.invalidateQueries({ queryKey:["appointments"] }); toast.success("Status updated"); },
     onError: (err: Error) => toast.error(err.message || "Failed to update status"),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: number) => deleteAppointment(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["appointments"] });
+      toast.success("Appointment deleted");
+      setDeleteId(null);
+    },
+    onError: (err: Error) => toast.error(err.message || "Delete failed"),
   });
 
   const counts = { total:appts.length, scheduled:appts.filter(a=>a.status==="Scheduled").length, checkedIn:appts.filter(a=>a.status==="Checked In").length, completed:appts.filter(a=>a.status==="Completed").length };
@@ -132,6 +144,7 @@ export default function AppointmentsPage() {
                               {a.status === "Scheduled" && <button onClick={()=>mut.mutate({id:a.id,status:"Checked In"})} className="icon-btn hover:!text-success" title="Check In"><Check size={11} /></button>}
                               {a.status === "Checked In" && <button onClick={()=>mut.mutate({id:a.id,status:"Completed"})} className="icon-btn hover:!text-accent" title="Complete"><Clock size={11} /></button>}
                               {(a.status==="Scheduled"||a.status==="Checked In") && <button onClick={()=>mut.mutate({id:a.id,status:"Cancelled"})} className="icon-btn hover:!text-danger" title="Cancel"><X size={11} /></button>}
+                              <button onClick={() => setDeleteId(a.id)} className="icon-btn hover:!text-danger" title="Delete"><Trash2 size={11} /></button>
                             </div>
                           </td>
                         </tr>
@@ -162,6 +175,17 @@ export default function AppointmentsPage() {
           </div>
         </>
       )}
+
+      <ConfirmDialog
+        open={!!deleteId}
+        title="Delete Appointment"
+        message="Are you sure you want to delete this appointment? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+        loading={deleteMut.isPending}
+        onConfirm={() => deleteId && deleteMut.mutate(deleteId)}
+        onCancel={() => setDeleteId(null)}
+      />
 
       <NewAppointmentModal open={showNewModal} onClose={() => setShowNewModal(false)} defaultDate={ds} />
     </div>

@@ -1,13 +1,15 @@
 "use client";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getPaymentBatches, createPaymentBatch, addPaymentBatchItem, getInvoices } from "@/lib/tauri";
+import { getPaymentBatches, createPaymentBatch, addPaymentBatchItem, getInvoices, deletePaymentBatch } from "@/lib/tauri";
 import { toast } from "sonner";
-import { Wallet, Plus, CreditCard, DollarSign } from "lucide-react";
+import { Wallet, Plus, CreditCard, DollarSign, Trash2 } from "lucide-react";
+import { ConfirmDialog } from "@/components/modules/ConfirmDialog";
 
 export default function RevenuePage() {
   const [showAddBatch, setShowAddBatch] = useState(false);
   const [showAddItem, setShowAddItem] = useState<number | null>(null);
+  const [deleteId, setDeleteId] = useState<number | null>(null);
   const qc = useQueryClient();
 
   const { data: batches = [], isLoading } = useQuery({ queryKey: ["payment-batches"], queryFn: getPaymentBatches });
@@ -15,6 +17,15 @@ export default function RevenuePage() {
 
   const createBatchMut = useMutation({ mutationFn: createPaymentBatch, onSuccess: () => { qc.invalidateQueries({ queryKey: ["payment-batches"] }); toast.success("Batch created!"); setShowAddBatch(false); }, onError: () => toast.error("Failed") });
   const addItemMut = useMutation({ mutationFn: (data: { batch_id: number; invoice_id: number; amount: number; payment_method: string }) => addPaymentBatchItem(data.batch_id, data.invoice_id, data.amount, data.payment_method), onSuccess: () => { qc.invalidateQueries({ queryKey: ["payment-batches"] }); toast.success("Invoice added to batch!"); setShowAddItem(null); }, onError: () => toast.error("Failed") });
+  const deleteMut = useMutation({
+    mutationFn: (id: number) => deletePaymentBatch(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["payment-batches"] });
+      toast.success("Batch deleted");
+      setDeleteId(null);
+    },
+    onError: () => toast.error("Delete failed"),
+  });
 
   const totalCollected = batches.reduce((sum, b) => sum + b.total_amount, 0);
   const completed = batches.filter(b => b.status === "Completed").length;
@@ -62,7 +73,10 @@ export default function RevenuePage() {
                   <td><span className={`badge ${b.status === "Completed" ? "badge-green" : b.status === "Pending" ? "badge-yellow" : "badge-gray"}`}>{b.status}</span></td>
                   <td className="text-muted">{b.created_by || "-"}</td>
                   <td>
-                    <button onClick={() => setShowAddItem(b.id)} className="btn btn-sm btn-ghost"><Plus size={14} /> Add Invoice</button>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => setShowAddItem(b.id)} className="btn btn-sm btn-ghost"><Plus size={14} /> Add Invoice</button>
+                      <button onClick={() => setDeleteId(b.id)} className="icon-btn hover:!text-danger"><Trash2 size={12} /></button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -88,6 +102,17 @@ export default function RevenuePage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!deleteId}
+        title="Delete Payment Batch"
+        message="Are you sure you want to delete this payment batch? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+        loading={deleteMut.isPending}
+        onConfirm={() => deleteId && deleteMut.mutate(deleteId)}
+        onCancel={() => setDeleteId(null)}
+      />
 
       {showAddItem !== null && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center">

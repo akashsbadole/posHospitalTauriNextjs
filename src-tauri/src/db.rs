@@ -117,6 +117,11 @@ fn run_gst_migrations(conn: &rusqlite::Connection) -> Result<()> {
         eprintln!("[MIGRATION] Adding base_charge column to wards table");
         conn.execute("ALTER TABLE wards ADD COLUMN base_charge REAL NOT NULL DEFAULT 500", [])?;
     }
+
+    if !column_exists(conn, "audit_logs", "ip_address")? {
+        eprintln!("[MIGRATION] Adding ip_address column to audit_logs table");
+        conn.execute("ALTER TABLE audit_logs ADD COLUMN ip_address TEXT", [])?;
+    }
     
     // Support Tickets table
     conn.execute_batch("

@@ -1,13 +1,15 @@
 "use client";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getMessageTemplates, createMessageTemplate, sendMessage, getMessageLogs } from "@/lib/tauri";
+import { getMessageTemplates, createMessageTemplate, sendMessage, getMessageLogs, deleteMessageTemplate } from "@/lib/tauri";
 import { toast } from "sonner";
-import { MessageSquare, Send, Plus, Phone, CheckCircle, XCircle, Mail } from "lucide-react";
+import { MessageSquare, Send, Plus, Phone, CheckCircle, XCircle, Mail, Trash2 } from "lucide-react";
+import { ConfirmDialog } from "@/components/modules/ConfirmDialog";
 
 export default function MessagesPage() {
   const [showAddTemplate, setShowAddTemplate] = useState(false);
   const [showSendMessage, setShowSendMessage] = useState(false);
+  const [deleteId, setDeleteId] = useState<number | null>(null);
   const qc = useQueryClient();
 
   const { data: templates = [], isLoading: tmplLoading } = useQuery({
@@ -30,6 +32,16 @@ export default function MessagesPage() {
     mutationFn: sendMessage,
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["message-logs"] }); toast.success("Message sent!"); setShowSendMessage(false); },
     onError: () => toast.error("Failed to send message"),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: number) => deleteMessageTemplate(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["message-templates"] });
+      toast.success("Template deleted");
+      setDeleteId(null);
+    },
+    onError: () => toast.error("Delete failed"),
   });
 
   const sentCount = logs.filter(l => l.status === "Sent").length;
@@ -78,12 +90,15 @@ export default function MessagesPage() {
                 {templates.map(tmpl => (
                   <div key={tmpl.id} className="p-3 bg-surface2 rounded-lg border border-border">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="font-medium text-white">{tmpl.template_name}</span>
-                      <span className={`badge ${
-                        tmpl.message_type === "WhatsApp" ? "badge-green" :
-                        tmpl.message_type === "SMS" ? "badge-blue" :
-                        tmpl.message_type === "Email" ? "badge-purple" : "badge-orange"
-                      }`}>{tmpl.message_type}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-white">{tmpl.template_name}</span>
+                        <span className={`badge ${
+                          tmpl.message_type === "WhatsApp" ? "badge-green" :
+                          tmpl.message_type === "SMS" ? "badge-blue" :
+                          tmpl.message_type === "Email" ? "badge-purple" : "badge-orange"
+                        }`}>{tmpl.message_type}</span>
+                      </div>
+                      <button onClick={() => setDeleteId(tmpl.id)} className="icon-btn hover:!text-danger"><Trash2 size={12} /></button>
                     </div>
                     <p className="text-xs text-muted line-clamp-2">{tmpl.template_body}</p>
                   </div>
@@ -150,6 +165,17 @@ export default function MessagesPage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!deleteId}
+        title="Delete Template"
+        message="Are you sure you want to delete this message template?"
+        confirmLabel="Delete"
+        variant="danger"
+        loading={deleteMut.isPending}
+        onConfirm={() => deleteId && deleteMut.mutate(deleteId)}
+        onCancel={() => setDeleteId(null)}
+      />
 
       {showSendMessage && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center anim-fade-in">

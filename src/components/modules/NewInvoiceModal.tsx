@@ -79,10 +79,11 @@ export function NewInvoiceModal({ open, onClose }: Props) {
   useEffect(() => {
     if (selectedVisitId) {
       getVisitCharges(selectedVisitId).then(data => {
-        const newItems = data.items.map(item => ({
+        const newItems: InvoiceItem[] = data.items.map(item => ({
           id: Math.random().toString(36).substr(2, 9),
           description: item.description,
           category: item.category,
+          hsn_code: "",
           quantity: item.quantity,
           unit_price: item.quantity > 0 ? item.amount / item.quantity : item.amount,
         }));

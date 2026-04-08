@@ -53,6 +53,7 @@ pub fn run() {
             commands::get_doctor_by_id,
             commands::create_doctor,
             commands::update_doctor,
+            commands::delete_doctor,
             commands::update_doctor_status,
             // Staff
             commands::get_staff,
@@ -64,6 +65,7 @@ pub fn run() {
             commands::get_appointment_by_id,
             commands::create_appointment,
             commands::update_appointment_status,
+            commands::delete_appointment,
             commands::cancel_appointment,
             commands::get_upcoming_appointments,
             // Prescriptions
@@ -71,6 +73,7 @@ pub fn run() {
             commands::get_prescription_by_id,
             commands::create_prescription,
             commands::issue_prescription,
+            commands::delete_prescription,
             commands::cancel_prescription,
             commands::refill_prescription,
             commands::export_prescription_pdf,
@@ -80,6 +83,7 @@ pub fn run() {
             commands::create_lab_test,
             commands::update_lab_result,
             commands::update_lab_status,
+            commands::delete_lab_test,
             commands::upload_lab_report,
             // Wards & Beds
             commands::get_wards,
@@ -88,6 +92,8 @@ pub fn run() {
             commands::discharge_patient,
             commands::transfer_patient,
             commands::update_bed_status,
+            commands::delete_ward,
+            commands::delete_bed,
             commands::create_ward,
             commands::create_ward_with_beds,
             // Billing
@@ -95,13 +101,16 @@ pub fn run() {
             commands::get_invoice_by_id,
             commands::create_invoice,
             commands::record_payment,
+            commands::delete_invoice,
             commands::export_invoice_pdf,
             commands::get_tax_report,
             commands::get_revenue_by_range,
+            commands::get_revenue_breakdown,
             // Insurance
             commands::get_insurance_claims,
             commands::create_insurance_claim,
             commands::update_claim_status,
+            commands::delete_insurance_claim,
             // Inventory
             commands::get_inventory,
             commands::get_low_stock_items,
@@ -129,13 +138,16 @@ pub fn run() {
             // Tax Settings
             commands::get_tax_settings,
             commands::create_tax_setting,
+            commands::delete_tax_setting,
             // Revenue Cycle - Payment Batches
             commands::get_payment_batches,
             commands::create_payment_batch,
+            commands::delete_payment_batch,
             commands::add_payment_batch_item,
             // WhatsApp & SMS
             commands::get_message_templates,
             commands::create_message_template,
+            commands::delete_message_template,
             commands::send_message,
             commands::get_message_logs,
             // Payroll & HR
@@ -148,6 +160,7 @@ pub fn run() {
             commands::mark_attendance,
             commands::get_payroll_months,
             commands::create_payroll_month,
+            commands::delete_payroll_month,
             commands::get_payroll_entries,
             commands::calculate_payroll,
             commands::update_payroll_entry_status,
@@ -155,6 +168,8 @@ pub fn run() {
             commands::get_asset_categories,
             commands::create_asset_category,
             commands::get_assets,
+            commands::update_asset,
+            commands::delete_asset,
             commands::create_asset,
             commands::get_asset_maintenance,
             commands::create_asset_maintenance,
@@ -171,27 +186,35 @@ pub fn run() {
             // Operation Theatre
             commands::get_ot_schedules,
             commands::create_ot_schedule,
+            commands::delete_ot_schedule,
             commands::get_ot_theatres,
             // Emergency / ER
             commands::get_emergency_cases,
             commands::create_emergency_case,
             commands::update_emergency_status,
+            commands::delete_emergency_case,
             // Blood Bank
             commands::get_blood_donors,
             commands::create_blood_donor,
+            commands::delete_blood_donor,
             commands::get_blood_inventory,
             commands::create_blood_inventory,
+            commands::delete_blood_inventory,
             commands::get_blood_requests,
             commands::create_blood_request,
+            commands::delete_blood_request,
             // Ambulance
             commands::get_ambulances,
             commands::create_ambulance,
+            commands::delete_ambulance,
             commands::get_ambulance_calls,
             commands::create_ambulance_call,
             commands::update_ambulance_status,
             // Expense Management
             commands::get_expense_categories,
             commands::create_expense_category,
+            commands::update_expense,
+            commands::delete_expense,
             commands::get_expenses,
             commands::create_expense,
             // Notifications
@@ -221,6 +244,12 @@ pub fn run() {
             commands::get_support_tickets,
             commands::create_support_ticket,
             commands::update_support_ticket,
+            commands::delete_support_ticket,
+            // Analytics
+            commands::get_analytics_monthly_finance,
+            commands::get_analytics_department_distribution,
+            commands::get_analytics_patient_flow,
+            commands::get_analytics_bed_occupancy,
             // Data Export
             commands::export_patients_csv,
             commands::export_invoices_csv,

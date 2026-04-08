@@ -1,13 +1,14 @@
 "use client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getInvoices, recordPayment, exportInvoicePdf } from "@/lib/tauri";
+import { getInvoices, recordPayment, exportInvoicePdf, getRevenueBreakdown, deleteInvoice } from "@/lib/tauri";
 import { useState } from "react";
-import { Plus, Download, Search, Eye, CreditCard, FileText, Share2, Mail } from "lucide-react";
+import { Plus, Download, Search, Eye, CreditCard, FileText, Share2, Mail, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { InvoiceStatus, Invoice } from "@/types";
 import { sendMessage } from "@/lib/tauri";
 import { NewInvoiceModal } from "@/components/modules/NewInvoiceModal";
 import { PartialPaymentModal } from "@/components/modules/PartialPaymentModal";
+import { ConfirmDialog } from "@/components/modules/ConfirmDialog";
 import { format } from "date-fns";
 
 const STATUS_BADGE: Record<InvoiceStatus,string> = {
@@ -18,6 +19,7 @@ export default function BillingPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [search, setSearch] = useState("");
   const [showNewModal, setShowNewModal] = useState(false);
+  const [deleteId, setDeleteId] = useState<number | null>(null);
   const [paymentInvoice, setPaymentInvoice] = useState<Invoice | null>(null);
   const qc = useQueryClient();
 
@@ -26,10 +28,25 @@ export default function BillingPage() {
     queryFn:()=>getInvoices(statusFilter as InvoiceStatus||undefined),
   });
 
+  const { data: revenueBreakdown = [] } = useQuery({
+    queryKey: ["revenue-breakdown"],
+    queryFn: getRevenueBreakdown,
+  });
+
   const payMut = useMutation({
     mutationFn:({id,amount}:{id:number;amount:number})=>recordPayment(id,amount,"Cash"),
     onSuccess:()=>{ qc.invalidateQueries({queryKey:["invoices"]}); toast.success("Payment recorded"); },
     onError: (err: Error) => toast.error(err.message || "Failed to record payment"),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: number) => deleteInvoice(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+      toast.success("Invoice deleted");
+      setDeleteId(null);
+    },
+    onError: (err: Error) => toast.error(err.message || "Delete failed"),
   });
 
   const totalRevenue = invoices.filter(i=>i.status==="Paid").reduce((s,i)=>s+i.paid_amount,0);
@@ -125,23 +142,21 @@ export default function BillingPage() {
       <div className="card mb-5 p-5">
         <div className="text-[11px] font-semibold text-subtle uppercase tracking-wider mb-4">Revenue Breakdown</div>
         <div className="flex gap-4">
-          {[
-            {l:"OPD",amt:72400,pct:75,c:"bg-accent"},
-            {l:"Lab",amt:48200,pct:50,c:"bg-success"},
-            {l:"Surgery",amt:86000,pct:90,c:"bg-purple"},
-            {l:"Pharmacy",amt:33800,pct:35,c:"bg-warning"},
-            {l:"IPD/Ward",amt:59600,pct:62,c:"bg-danger"},
-          ].map(r=>(
-            <div key={r.l} className="flex-1">
-              <div className="flex justify-between text-[12px] mb-1.5">
-                <span className="text-muted">{r.l}</span>
-                <span className="text-white font-semibold">₹{(r.amt/1000).toFixed(0)}K</span>
+          {revenueBreakdown.length === 0 ? (
+            <div className="text-muted text-xs italic">No data available</div>
+          ) : (
+            revenueBreakdown.map(r=>(
+              <div key={r.category} className="flex-1">
+                <div className="flex justify-between text-[12px] mb-1.5">
+                  <span className="text-muted">{r.category}</span>
+                  <span className="text-white font-semibold">₹{(r.amount/1000).toFixed(0)}K</span>
+                </div>
+                <div className="h-1.5 bg-surface3 rounded-full overflow-hidden">
+                  <div className={`h-full ${r.color} rounded-full`} style={{width:`${r.percentage}%`}} />
+                </div>
               </div>
-              <div className="h-1.5 bg-surface3 rounded-full overflow-hidden">
-                <div className={`h-full ${r.c} rounded-full`} style={{width:`${r.pct}%`}} />
-              </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </div>
 
@@ -182,6 +197,7 @@ export default function BillingPage() {
                         <button onClick={() => handleDownloadPdf(inv.id)} title="Download / Print PDF" className="icon-btn hover:!text-accent"><Download size={12} /></button>
                         <button onClick={() => handleShare(inv, "WhatsApp")} title="Share via WhatsApp" className="icon-btn hover:!text-green-500"><Share2 size={12} /></button>
                         <button onClick={() => handleShare(inv, "Email")} title="Share via Email" className="icon-btn hover:!text-blue"><Mail size={12} /></button>
+                        <button onClick={() => setDeleteId(inv.id)} title="Delete" className="icon-btn hover:!text-danger"><Trash2 size={12} /></button>
                       </div>
                     </td>
                   </tr>
@@ -190,6 +206,17 @@ export default function BillingPage() {
             </table>
           </div>}
       </div>
+
+      <ConfirmDialog
+        open={!!deleteId}
+        title="Delete Invoice"
+        message="Are you sure you want to delete this invoice? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+        loading={deleteMut.isPending}
+        onConfirm={() => deleteId && deleteMut.mutate(deleteId)}
+        onCancel={() => setDeleteId(null)}
+      />
 
       <NewInvoiceModal open={showNewModal} onClose={() => setShowNewModal(false)} />
       <PartialPaymentModal invoice={paymentInvoice} open={!!paymentInvoice} onClose={() => setPaymentInvoice(null)} />

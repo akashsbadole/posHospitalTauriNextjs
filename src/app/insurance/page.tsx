@@ -1,11 +1,12 @@
 "use client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getInsuranceClaims, updateClaimStatus } from "@/lib/tauri";
+import { getInsuranceClaims, updateClaimStatus, deleteInsuranceClaim } from "@/lib/tauri";
 import { useState } from "react";
-import { Plus, Search, CheckCircle, XCircle, Send } from "lucide-react";
+import { Plus, Search, CheckCircle, XCircle, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { ClaimStatus } from "@/types";
 import { NewClaimModal } from "@/components/modules/NewClaimModal";
+import { ConfirmDialog } from "@/components/modules/ConfirmDialog";
 
 const STATUS_BADGE: Record<ClaimStatus,string> = {
   Draft:"badge-gray",Submitted:"badge-blue","Under Review":"badge-yellow",Approved:"badge-green",Rejected:"badge-red",Paid:"badge-green",
@@ -15,6 +16,7 @@ export default function InsurancePage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [showNewModal, setShowNewModal] = useState(false);
+  const [deleteId, setDeleteId] = useState<number | null>(null);
   const qc = useQueryClient();
 
   const { data: claims = [], isLoading } = useQuery({
@@ -25,6 +27,16 @@ export default function InsurancePage() {
   const statusMut = useMutation({
     mutationFn:({id,status,amount}:{id:number;status:ClaimStatus;amount?:number})=>updateClaimStatus(id,status,amount),
     onSuccess:()=>{qc.invalidateQueries({queryKey:["insurance-claims"]});toast.success("Claim status updated");},
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: number) => deleteInsuranceClaim(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["insurance-claims"] });
+      toast.success("Claim deleted");
+      setDeleteId(null);
+    },
+    onError: (err: Error) => toast.error(err.message || "Delete failed"),
   });
 
   const fmt = (n:number)=>`₹${n.toLocaleString("en-IN")}`;
@@ -101,6 +113,7 @@ export default function InsurancePage() {
                           <button onClick={()=>statusMut.mutate({id:c.id,status:"Approved",amount:c.claim_amount})} className="icon-btn hover:!text-success" title="Approve"><CheckCircle size={12} /></button>
                           <button onClick={()=>statusMut.mutate({id:c.id,status:"Rejected"})} className="icon-btn hover:!text-danger" title="Reject"><XCircle size={12} /></button>
                         </>}
+                        <button onClick={() => setDeleteId(c.id)} className="icon-btn hover:!text-danger" title="Delete"><Trash2 size={12} /></button>
                       </div>
                     </td>
                   </tr>
@@ -109,6 +122,17 @@ export default function InsurancePage() {
             </table>
           </div>}
       </div>
+
+      <ConfirmDialog
+        open={!!deleteId}
+        title="Delete Insurance Claim"
+        message="Are you sure you want to delete this insurance claim? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+        loading={deleteMut.isPending}
+        onConfirm={() => deleteId && deleteMut.mutate(deleteId)}
+        onCancel={() => setDeleteId(null)}
+      />
 
       <NewClaimModal open={showNewModal} onClose={() => setShowNewModal(false)} />
     </div>

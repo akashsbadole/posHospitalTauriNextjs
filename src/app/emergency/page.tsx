@@ -1,13 +1,15 @@
 "use client";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getEmergencyCases, createEmergencyCase, updateEmergencyStatus, getWards, getPatients } from "@/lib/tauri";
+import { getEmergencyCases, createEmergencyCase, updateEmergencyStatus, getWards, getPatients, deleteEmergencyCase } from "@/lib/tauri";
 import { toast } from "sonner";
-import { AlertTriangle, Plus, User, Activity } from "lucide-react";
+import { AlertTriangle, Plus, User, Activity, Trash2 } from "lucide-react";
+import { ConfirmDialog } from "@/components/modules/ConfirmDialog";
 
 export default function EmergencyPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [showAdmit, setShowAdmit] = useState<number | null>(null);
+  const [deleteId, setDeleteId] = useState<number | null>(null);
   const qc = useQueryClient();
 
   const { data: cases = [], isLoading } = useQuery({ queryKey: ["emergency-cases"], queryFn: () => getEmergencyCases() });
@@ -16,6 +18,15 @@ export default function EmergencyPage() {
 
   const createMut = useMutation({ mutationFn: createEmergencyCase, onSuccess: () => { qc.invalidateQueries({ queryKey: ["emergency-cases"] }); toast.success("Case registered!"); setShowAdd(false); }, onError: () => toast.error("Failed") });
   const updateMut = useMutation({ mutationFn: ({ id, status, outcome, admitted_to }: { id: number; status: string; outcome?: string; admitted_to?: number }) => updateEmergencyStatus(id, status, outcome, admitted_to), onSuccess: () => { qc.invalidateQueries({ queryKey: ["emergency-cases"] }); toast.success("Updated!"); }, onError: () => toast.error("Failed") });
+  const deleteMut = useMutation({
+    mutationFn: (id: number) => deleteEmergencyCase(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["emergency-cases"] });
+      toast.success("Emergency case deleted");
+      setDeleteId(null);
+    },
+    onError: () => toast.error("Delete failed"),
+  });
 
   const triageColors: Record<string, string> = { Red: "badge-red", Orange: "badge-yellow", Yellow: "badge-blue", Green: "badge-green" };
   const activeCases = cases.filter(c => c.status !== "Discharged").length;
@@ -53,7 +64,7 @@ export default function EmergencyPage() {
       <div className="card">
         {isLoading ? <div className="py-12 text-center text-muted">Loading...</div> : (
           <table className="data-table">
-            <thead><tr><th>Case</th><th>Patient</th><th>Complaint</th><th>Triage</th><th>Arrival</th><th>Status</th><th>Action</th></tr></thead>
+            <thead><tr><th>Case</th><th>Patient</th><th>Complaint</th><th>Triage</th><th>Arrival</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody>
               {cases.map(c => (
                 <tr key={c.id}>
@@ -64,12 +75,15 @@ export default function EmergencyPage() {
                   <td className="text-muted">{new Date(c.arrival_time).toLocaleTimeString()}</td>
                   <td><span className={`badge ${c.status === "Discharged" ? "badge-green" : c.status === "Admitted" ? "badge-blue" : "badge-yellow"}`}>{c.status}</span></td>
                   <td>
-                    {c.status !== "Discharged" && c.status !== "Admitted" && (
-                      <div className="flex gap-1">
-                        <button onClick={() => setShowAdmit(c.id)} className="btn btn-sm btn-ghost">Admit</button>
-                        <button onClick={() => updateMut.mutate({ id: c.id, status: "Discharged", outcome: "Treated" })} className="btn btn-sm btn-success">Discharge</button>
-                      </div>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {c.status !== "Discharged" && c.status !== "Admitted" && (
+                        <>
+                          <button onClick={() => setShowAdmit(c.id)} className="btn btn-sm btn-ghost">Admit</button>
+                          <button onClick={() => updateMut.mutate({ id: c.id, status: "Discharged", outcome: "Treated" })} className="btn btn-sm btn-success">Discharge</button>
+                        </>
+                      )}
+                      <button onClick={() => setDeleteId(c.id)} className="icon-btn hover:!text-danger"><Trash2 size={12} /></button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -77,6 +91,17 @@ export default function EmergencyPage() {
           </table>
         )}
       </div>
+
+      <ConfirmDialog
+        open={!!deleteId}
+        title="Delete Emergency Case"
+        message="Are you sure you want to delete this emergency case record?"
+        confirmLabel="Delete"
+        variant="danger"
+        loading={deleteMut.isPending}
+        onConfirm={() => deleteId && deleteMut.mutate(deleteId)}
+        onCancel={() => setDeleteId(null)}
+      />
 
       {showAdmit && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center">
