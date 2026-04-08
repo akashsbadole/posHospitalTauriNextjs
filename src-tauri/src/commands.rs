@@ -3413,6 +3413,308 @@ pub fn export_patients_csv(state: State<AppState>) -> Result<String, String> {
     Ok(path)
 }
 
+
+#[tauri::command]
+pub fn delete_doctor(state: State<AppState>, id: i64, requester: Option<String>) -> Result<(), String> {
+    check_permission(&state, requester.clone(), "Staff", "delete")?;
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM doctors WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
+    audit::log(&state.pool, &requester.unwrap_or_else(|| "System".to_string()), "Doctor deleted", "staff", Some(id), None);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_appointment(state: State<AppState>, id: i64, requester: Option<String>) -> Result<(), String> {
+    check_permission(&state, requester.clone(), "Appointments", "delete")?;
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM appointments WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
+    audit::log(&state.pool, &requester.unwrap_or_else(|| "System".to_string()), "Appointment deleted", "appointment", Some(id), None);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_prescription(state: State<AppState>, id: i64, requester: Option<String>) -> Result<(), String> {
+    check_permission(&state, requester.clone(), "Prescriptions", "delete")?;
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM prescriptions WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
+    audit::log(&state.pool, &requester.unwrap_or_else(|| "System".to_string()), "Prescription deleted", "prescription", Some(id), None);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_lab_test(state: State<AppState>, id: i64, requester: Option<String>) -> Result<(), String> {
+    check_permission(&state, requester.clone(), "Lab", "delete")?;
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM lab_tests WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
+    audit::log(&state.pool, &requester.unwrap_or_else(|| "System".to_string()), "Lab test deleted", "lab", Some(id), None);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_ward(state: State<AppState>, id: i64, requester: Option<String>) -> Result<(), String> {
+    check_permission(&state, requester.clone(), "Wards", "delete")?;
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM wards WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
+    audit::log(&state.pool, &requester.unwrap_or_else(|| "System".to_string()), "Ward deleted", "ward", Some(id), None);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_bed(state: State<AppState>, id: i64, requester: Option<String>) -> Result<(), String> {
+    check_permission(&state, requester.clone(), "Wards", "delete")?;
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM beds WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
+    audit::log(&state.pool, &requester.unwrap_or_else(|| "System".to_string()), "Bed deleted", "bed", Some(id), None);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_invoice(state: State<AppState>, id: i64, requester: Option<String>) -> Result<(), String> {
+    check_permission(&state, requester.clone(), "Billing", "delete")?;
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM invoices WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
+    audit::log(&state.pool, &requester.unwrap_or_else(|| "System".to_string()), "Invoice deleted", "billing", Some(id), None);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_insurance_claim(state: State<AppState>, id: i64, requester: Option<String>) -> Result<(), String> {
+    check_permission(&state, requester.clone(), "Insurance", "delete")?;
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM insurance_claims WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
+    audit::log(&state.pool, &requester.unwrap_or_else(|| "System".to_string()), "Insurance claim deleted", "insurance", Some(id), None);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_tax_setting(state: State<AppState>, id: i64, requester: Option<String>) -> Result<(), String> {
+    check_permission(&state, requester.clone(), "Settings", "delete")?;
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM tax_settings WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
+    audit::log(&state.pool, &requester.unwrap_or_else(|| "System".to_string()), "Tax setting deleted", "settings", Some(id), None);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_payment_batch(state: State<AppState>, id: i64, requester: Option<String>) -> Result<(), String> {
+    check_permission(&state, requester.clone(), "Billing", "delete")?;
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM payment_batches WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
+    audit::log(&state.pool, &requester.unwrap_or_else(|| "System".to_string()), "Payment batch deleted", "billing", Some(id), None);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_message_template(state: State<AppState>, id: i64, requester: Option<String>) -> Result<(), String> {
+    check_permission(&state, requester.clone(), "Messages", "delete")?;
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM message_templates WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
+    audit::log(&state.pool, &requester.unwrap_or_else(|| "System".to_string()), "Message template deleted", "messages", Some(id), None);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_payroll_month(state: State<AppState>, id: i64, requester: Option<String>) -> Result<(), String> {
+    check_permission(&state, requester.clone(), "HR", "delete")?;
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM payroll_months WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
+    audit::log(&state.pool, &requester.unwrap_or_else(|| "System".to_string()), "Payroll month deleted", "payroll", Some(id), None);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_ot_schedule(state: State<AppState>, id: i64, requester: Option<String>) -> Result<(), String> {
+    check_permission(&state, requester.clone(), "OperationTheatre", "delete")?;
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM ot_schedules WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
+    audit::log(&state.pool, &requester.unwrap_or_else(|| "System".to_string()), "OT schedule deleted", "ot", Some(id), None);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_ambulance(state: State<AppState>, id: i64, requester: Option<String>) -> Result<(), String> {
+    check_permission(&state, requester.clone(), "Ambulance", "delete")?;
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM ambulances WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
+    audit::log(&state.pool, &requester.unwrap_or_else(|| "System".to_string()), "Ambulance deleted", "ambulance", Some(id), None);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_support_ticket(state: State<AppState>, id: i64, requester: Option<String>) -> Result<(), String> {
+    check_permission(&state, requester.clone(), "Support", "delete")?;
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM support_tickets WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
+    audit::log(&state.pool, &requester.unwrap_or_else(|| "System".to_string()), "Support ticket deleted", "support", Some(id), None);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_blood_donor(state: State<AppState>, id: i64, requester: Option<String>) -> Result<(), String> {
+    check_permission(&state, requester.clone(), "BloodBank", "delete")?;
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM blood_donors WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
+    audit::log(&state.pool, &requester.unwrap_or_else(|| "System".to_string()), "Blood donor deleted", "blood-bank", Some(id), None);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_blood_inventory(state: State<AppState>, id: i64, requester: Option<String>) -> Result<(), String> {
+    check_permission(&state, requester.clone(), "BloodBank", "delete")?;
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM blood_inventory WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
+    audit::log(&state.pool, &requester.unwrap_or_else(|| "System".to_string()), "Blood inventory item deleted", "blood-bank", Some(id), None);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_blood_request(state: State<AppState>, id: i64, requester: Option<String>) -> Result<(), String> {
+    check_permission(&state, requester.clone(), "BloodBank", "delete")?;
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM blood_requests WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
+    audit::log(&state.pool, &requester.unwrap_or_else(|| "System".to_string()), "Blood request deleted", "blood-bank", Some(id), None);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_emergency_case(state: State<AppState>, id: i64, requester: Option<String>) -> Result<(), String> {
+    check_permission(&state, requester.clone(), "Emergency", "delete")?;
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM emergency_cases WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
+    audit::log(&state.pool, &requester.unwrap_or_else(|| "System".to_string()), "Emergency case deleted", "emergency", Some(id), None);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_asset(state: State<AppState>, id: i64, requester: Option<String>) -> Result<(), String> {
+    check_permission(&state, requester.clone(), "Assets", "delete")?;
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM assets WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
+    audit::log(&state.pool, &requester.unwrap_or_else(|| "System".to_string()), "Asset deleted", "asset", Some(id), None);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_expense(state: State<AppState>, id: i64, requester: Option<String>) -> Result<(), String> {
+    check_permission(&state, requester.clone(), "Expenses", "delete")?;
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM expenses WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
+    audit::log(&state.pool, &requester.unwrap_or_else(|| "System".to_string()), "Expense deleted", "expense", Some(id), None);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_analytics_monthly_finance(state: State<AppState>) -> Result<MonthlyFinanceAnalytics, String> {
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+
+    let mut revenue = Vec::new();
+    let mut expenses = Vec::new();
+    let months = vec!["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+    let current_year = chrono::Local::now().format("%Y").to_string();
+
+    for (i, m) in months.into_iter().enumerate() {
+        let month_str = format!("{}-{:02}", current_year, i + 1);
+
+        let rev: f64 = conn.query_row(
+            "SELECT COALESCE(SUM(paid_amount), 0) FROM invoices WHERE issue_date LIKE ?1",
+            params![format!("{}%", month_str)],
+            |r| r.get(0)
+        ).unwrap_or(0.0);
+
+        let exp: f64 = conn.query_row(
+            "SELECT COALESCE(SUM(amount), 0) FROM expenses WHERE expense_date LIKE ?1",
+            params![format!("{}%", month_str)],
+            |r| r.get(0)
+        ).unwrap_or(0.0);
+
+        revenue.push(MonthlyData { month: m.to_string(), value: rev });
+        expenses.push(MonthlyData { month: m.to_string(), value: exp });
+    }
+
+    Ok(MonthlyFinanceAnalytics { revenue, expenses })
+}
+
+#[tauri::command]
+pub fn get_analytics_department_distribution(state: State<AppState>) -> Result<Vec<DepartmentDistribution>, String> {
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(
+        "SELECT department, COUNT(*) FROM patients WHERE is_deleted = 0 GROUP BY department"
+    ).map_err(|e| e.to_string())?;
+
+    let rows = stmt.query_map([], |r| Ok(DepartmentDistribution {
+        department: r.get(0)?,
+        count: r.get(1)?,
+    })).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
+
+    Ok(rows)
+}
+
+#[tauri::command]
+pub fn get_analytics_patient_flow(state: State<AppState>) -> Result<Vec<MonthlyData>, String> {
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    let mut data = Vec::new();
+    let months = vec!["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    let current_year = chrono::Local::now().format("%Y").to_string();
+
+    for (i, m) in months.into_iter().enumerate() {
+        let month_str = format!("{}-{:02}", current_year, i + 1);
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM patients WHERE created_at LIKE ?1 AND is_deleted = 0",
+            params![format!("{}%", month_str)],
+            |r| r.get(0)
+        ).unwrap_or(0);
+        data.push(MonthlyData { month: m.to_string(), value: count as f64 });
+    }
+    Ok(data)
+}
+
+#[tauri::command]
+pub fn get_analytics_bed_occupancy(state: State<AppState>) -> Result<Vec<DailyData>, String> {
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    let mut data = Vec::new();
+
+    for i in (0..30).rev() {
+        let date = chrono::Local::now() - chrono::Duration::days(i);
+        let day_label = date.format("%d").to_string();
+
+        let occupied: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM beds WHERE status = 'Occupied'",
+            [], |r| r.get(0)
+        ).unwrap_or(0);
+
+        data.push(DailyData { day: day_label, value: occupied as f64 });
+    }
+    Ok(data)
+}
+
+#[tauri::command]
+pub fn get_revenue_breakdown(state: State<AppState>) -> Result<Vec<RevenueByCategory>, String> {
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(
+        "SELECT category, SUM(total) FROM invoice_items GROUP BY category"
+    ).map_err(|e| e.to_string())?;
+
+    let rows: Vec<(String, f64)> = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+        .map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
+
+    let total: f64 = rows.iter().map(|(_, a)| a).sum();
+
+    let colors = vec!["bg-accent", "bg-success", "bg-purple", "bg-warning", "bg-danger", "bg-blue"];
+
+    let mut result = Vec::new();
+    for (i, (cat, amt)) in rows.into_iter().enumerate() {
+        let pct = if total > 0.0 { (amt / total * 100.0).round() } else { 0.0 };
+        result.push(RevenueByCategory {
+            category: cat,
+            amount: amt,
+            percentage: pct,
+            color: colors[i % colors.len()].to_string(),
+        });
+    }
+    Ok(result)
+}
+
 #[tauri::command]
 pub fn export_gst_csv(state: State<AppState>, from: String, to: String) -> Result<String, String> {
     let conn = state.pool.get().map_err(|e| e.to_string())?;

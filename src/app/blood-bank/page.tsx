@@ -1,9 +1,10 @@
 "use client";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getBloodDonors, createBloodDonor, getBloodInventory, createBloodInventory, getBloodRequests, createBloodRequest, getPatients } from "@/lib/tauri";
+import { getBloodDonors, createBloodDonor, getBloodInventory, createBloodInventory, getBloodRequests, createBloodRequest, getPatients, deleteBloodDonor, deleteBloodInventory, deleteBloodRequest } from "@/lib/tauri";
 import { toast } from "sonner";
-import { Droplet, Plus, User, Package } from "lucide-react";
+import { Droplet, Plus, User, Package, Trash2 } from "lucide-react";
+import { ConfirmDialog } from "@/components/modules/ConfirmDialog";
 
 type Tab = "inventory" | "donors" | "requests";
 
@@ -12,6 +13,7 @@ export default function BloodBankPage() {
   const [showAddDonor, setShowAddDonor] = useState(false);
   const [showAddBlood, setShowAddBlood] = useState(false);
   const [showAddRequest, setShowAddRequest] = useState(false);
+  const [deleteId, setDeleteId] = useState<{ id: number; type: "donor" | "inventory" | "request" } | null>(null);
   const qc = useQueryClient();
 
   const { data: donors = [] } = useQuery({ queryKey: ["blood-donors"], queryFn: () => getBloodDonors() });
@@ -22,6 +24,22 @@ export default function BloodBankPage() {
   const createDonorMut = useMutation({ mutationFn: createBloodDonor, onSuccess: () => { qc.invalidateQueries({ queryKey: ["blood-donors"] }); toast.success("Donor added!"); setShowAddDonor(false); }, onError: () => toast.error("Failed") });
   const createInvMut = useMutation({ mutationFn: createBloodInventory, onSuccess: () => { qc.invalidateQueries({ queryKey: ["blood-inventory"] }); toast.success("Blood added!"); setShowAddBlood(false); }, onError: () => toast.error("Failed") });
   const createReqMut = useMutation({ mutationFn: createBloodRequest, onSuccess: () => { qc.invalidateQueries({ queryKey: ["blood-requests"] }); toast.success("Request created!"); setShowAddRequest(false); }, onError: () => toast.error("Failed") });
+
+  const deleteMut = useMutation({
+    mutationFn: async (id: number) => {
+      if (deleteId?.type === "donor") return deleteBloodDonor(id);
+      if (deleteId?.type === "inventory") return deleteBloodInventory(id);
+      if (deleteId?.type === "request") return deleteBloodRequest(id);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["blood-donors"] });
+      qc.invalidateQueries({ queryKey: ["blood-inventory"] });
+      qc.invalidateQueries({ queryKey: ["blood-requests"] });
+      toast.success("Record deleted");
+      setDeleteId(null);
+    },
+    onError: () => toast.error("Delete failed"),
+  });
 
   const totalUnits = inventory.filter(i => i.status === "Available").reduce((s, i) => s + i.units, 0);
   const bloodGroups = ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"];
@@ -68,7 +86,7 @@ export default function BloodBankPage() {
       <div className="card">
         {tab === "inventory" && (
           <table className="data-table">
-            <thead><tr><th>Bag No.</th><th>Blood Group</th><th>Component</th><th>Units</th><th>Collected</th><th>Expires</th><th>Status</th></tr></thead>
+            <thead><tr><th>Bag No.</th><th>Blood Group</th><th>Component</th><th>Units</th><th>Collected</th><th>Expires</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody>
               {inventory.map(i => (
                 <tr key={i.id}>
@@ -79,6 +97,9 @@ export default function BloodBankPage() {
                   <td>{i.collection_date}</td>
                   <td>{i.expiry_date}</td>
                   <td><span className={`badge ${i.status === "Available" ? "badge-green" : "badge-gray"}`}>{i.status}</span></td>
+                  <td>
+                    <button onClick={() => setDeleteId({ id: i.id, type: "inventory" })} className="icon-btn hover:!text-danger"><Trash2 size={12} /></button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -87,7 +108,7 @@ export default function BloodBankPage() {
 
         {tab === "donors" && (
           <table className="data-table">
-            <thead><tr><th>Code</th><th>Name</th><th>Phone</th><th>Blood Group</th><th>Donations</th><th>Status</th></tr></thead>
+            <thead><tr><th>Code</th><th>Name</th><th>Phone</th><th>Blood Group</th><th>Donations</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody>
               {donors.map(d => (
                 <tr key={d.id}>
@@ -97,6 +118,9 @@ export default function BloodBankPage() {
                   <td className="text-danger font-bold">{d.blood_group}</td>
                   <td>{d.donation_count}</td>
                   <td><span className={`badge ${d.status === "Active" ? "badge-green" : "badge-gray"}`}>{d.status}</span></td>
+                  <td>
+                    <button onClick={() => setDeleteId({ id: d.id, type: "donor" })} className="icon-btn hover:!text-danger"><Trash2 size={12} /></button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -105,7 +129,7 @@ export default function BloodBankPage() {
 
         {tab === "requests" && (
           <table className="data-table">
-            <thead><tr><th>Request</th><th>Patient</th><th>Blood Group</th><th>Units</th><th>Urgency</th><th>Status</th></tr></thead>
+            <thead><tr><th>Request</th><th>Patient</th><th>Blood Group</th><th>Units</th><th>Urgency</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody>
               {requests.map(r => (
                 <tr key={r.id}>
@@ -115,12 +139,26 @@ export default function BloodBankPage() {
                   <td>{r.units_required}</td>
                   <td><span className={`badge ${r.urgency === "Emergency" ? "badge-red" : "badge-yellow"}`}>{r.urgency}</span></td>
                   <td><span className={`badge ${r.status === "Approved" ? "badge-green" : r.status === "Pending" ? "badge-yellow" : "badge-gray"}`}>{r.status}</span></td>
+                  <td>
+                    <button onClick={() => setDeleteId({ id: r.id, type: "request" })} className="icon-btn hover:!text-danger"><Trash2 size={12} /></button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
       </div>
+
+      <ConfirmDialog
+        open={!!deleteId}
+        title={`Delete ${deleteId?.type === "donor" ? "Donor" : deleteId?.type === "inventory" ? "Inventory Item" : "Request"}`}
+        message="Are you sure you want to delete this record? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+        loading={deleteMut.isPending}
+        onConfirm={() => deleteId && deleteMut.mutate(deleteId.id)}
+        onCancel={() => setDeleteId(null)}
+      />
 
       {showAddDonor && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center">

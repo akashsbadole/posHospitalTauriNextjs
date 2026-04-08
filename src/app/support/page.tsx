@@ -4,12 +4,13 @@ import {
   LifeBuoy, Search, Filter, Plus,
   MessageSquare, Clock, CheckCircle2,
   AlertCircle, ChevronRight, User, Tag,
-  MoreHorizontal, Send
+  MoreHorizontal, Send, Trash2
 } from "lucide-react";
 import { clsx } from "clsx";
-import { getSupportTickets, createSupportTicket, updateSupportTicket, getPatients, getUsers } from "@/lib/tauri";
+import { getSupportTickets, createSupportTicket, updateSupportTicket, deleteSupportTicket, getPatients, getUsers } from "@/lib/tauri";
 import type { SupportTicket, Patient, User as AppUser } from "@/types";
 import { toast } from "sonner";
+import { ConfirmDialog } from "@/components/modules/ConfirmDialog";
 import { format } from "date-fns";
 
 export default function SupportPage() {
@@ -18,6 +19,8 @@ export default function SupportPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [showNewModal, setShowNewModal] = useState(false);
+  const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [staff, setStaff] = useState<AppUser[]>([]);
 
@@ -81,6 +84,21 @@ export default function SupportPage() {
       fetchData();
     } catch (err) {
       toast.error("Failed to update status");
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteId) return;
+    try {
+      setIsDeleting(true);
+      await deleteSupportTicket(deleteId);
+      toast.success("Ticket deleted successfully");
+      setDeleteId(null);
+      fetchData();
+    } catch (err) {
+      toast.error("Failed to delete ticket");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -251,8 +269,8 @@ export default function SupportPage() {
                           Resolve
                         </button>
                       )}
-                      <button className="p-1.5 hover:bg-surface3 rounded-lg text-subtle hover:text-white">
-                        <MoreHorizontal size={18} />
+                      <button onClick={() => setDeleteId(ticket.id)} className="p-1.5 hover:bg-surface3 rounded-lg text-subtle hover:text-danger">
+                        <Trash2 size={18} />
                       </button>
                     </div>
                   </div>
@@ -262,6 +280,17 @@ export default function SupportPage() {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={!!deleteId}
+        title="Delete Support Ticket"
+        message="Are you sure you want to delete this ticket? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+        loading={isDeleting}
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteId(null)}
+      />
 
       {/* New Ticket Modal */}
       {showNewModal && (

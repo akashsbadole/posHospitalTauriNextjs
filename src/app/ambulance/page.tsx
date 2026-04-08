@@ -1,9 +1,10 @@
 "use client";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getAmbulances, createAmbulance, getAmbulanceCalls, createAmbulanceCall, updateAmbulanceStatus, getPatients } from "@/lib/tauri";
+import { getAmbulances, createAmbulance, getAmbulanceCalls, createAmbulanceCall, updateAmbulanceStatus, getPatients, deleteAmbulance } from "@/lib/tauri";
 import { toast } from "sonner";
-import { Car, Plus, MapPin, Phone } from "lucide-react";
+import { Car, Plus, MapPin, Phone, Trash2 } from "lucide-react";
+import { ConfirmDialog } from "@/components/modules/ConfirmDialog";
 
 type Tab = "calls" | "fleet";
 
@@ -11,6 +12,7 @@ export default function AmbulancePage() {
   const [tab, setTab] = useState<Tab>("calls");
   const [showAddAmbulance, setShowAddAmbulance] = useState(false);
   const [showAddCall, setShowAddCall] = useState(false);
+  const [deleteId, setDeleteId] = useState<number | null>(null);
   const qc = useQueryClient();
 
   const { data: ambulances = [] } = useQuery({ queryKey: ["ambulances"], queryFn: getAmbulances });
@@ -20,6 +22,15 @@ export default function AmbulancePage() {
   const createAmbMut = useMutation({ mutationFn: createAmbulance, onSuccess: () => { qc.invalidateQueries({ queryKey: ["ambulances"] }); toast.success("Ambulance added!"); setShowAddAmbulance(false); }, onError: () => toast.error("Failed") });
   const createCallMut = useMutation({ mutationFn: createAmbulanceCall, onSuccess: () => { qc.invalidateQueries({ queryKey: ["ambulance-calls"] }); toast.success("Call dispatched!"); setShowAddCall(false); }, onError: () => toast.error("Failed") });
   const updateMut = useMutation({ mutationFn: ({ id, status }: { id: number; status: string }) => updateAmbulanceStatus(id, status), onSuccess: () => { qc.invalidateQueries({ queryKey: ["ambulance-calls"] }); toast.success("Status updated!"); }, onError: () => toast.error("Failed") });
+  const deleteMut = useMutation({
+    mutationFn: (id: number) => deleteAmbulance(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["ambulances"] });
+      toast.success("Ambulance deleted");
+      setDeleteId(null);
+    },
+    onError: () => toast.error("Delete failed"),
+  });
 
   const available = ambulances.filter(a => a.status === "Available").length;
   const activeCalls = calls.filter(c => c.status !== "Completed").length;
@@ -91,7 +102,7 @@ export default function AmbulancePage() {
 
         {tab === "fleet" && (
           <table className="data-table">
-            <thead><tr><th>Number</th><th>Type</th><th>License</th><th>Insurance</th><th>Last Service</th><th>Status</th></tr></thead>
+            <thead><tr><th>Number</th><th>Type</th><th>License</th><th>Insurance</th><th>Last Service</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody>
               {ambulances.map(a => (
                 <tr key={a.id}>
@@ -101,12 +112,26 @@ export default function AmbulancePage() {
                   <td>{a.insurance_expiry || "-"}</td>
                   <td>{a.last_service || "-"}</td>
                   <td><span className={`badge ${a.status === "Available" ? "badge-green" : a.status === "On Call" ? "badge-yellow" : "badge-red"}`}>{a.status}</span></td>
+                  <td>
+                    <button onClick={() => setDeleteId(a.id)} className="icon-btn hover:!text-danger"><Trash2 size={12} /></button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
       </div>
+
+      <ConfirmDialog
+        open={!!deleteId}
+        title="Delete Ambulance"
+        message="Are you sure you want to delete this ambulance from the fleet?"
+        confirmLabel="Delete"
+        variant="danger"
+        loading={deleteMut.isPending}
+        onConfirm={() => deleteId && deleteMut.mutate(deleteId)}
+        onCancel={() => setDeleteId(null)}
+      />
 
       {showAddAmbulance && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center">

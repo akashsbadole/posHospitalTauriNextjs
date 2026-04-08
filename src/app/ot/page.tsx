@@ -1,12 +1,14 @@
 "use client";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getOtSchedules, createOtSchedule, getOtTheatres, getDoctors, getPatients } from "@/lib/tauri";
+import { getOtSchedules, createOtSchedule, getOtTheatres, getDoctors, getPatients, deleteOtSchedule } from "@/lib/tauri";
 import { toast } from "sonner";
-import { Scissors, Plus, Play, CheckCircle, Clock } from "lucide-react";
+import { Scissors, Plus, Play, CheckCircle, Clock, Trash2 } from "lucide-react";
+import { ConfirmDialog } from "@/components/modules/ConfirmDialog";
 
 export default function OtPage() {
   const [showAdd, setShowAdd] = useState(false);
+  const [deleteId, setDeleteId] = useState<number | null>(null);
   const today = new Date().toISOString().split("T")[0];
   const qc = useQueryClient();
 
@@ -16,6 +18,15 @@ export default function OtPage() {
   const { data: patients = [] } = useQuery({ queryKey: ["patients"], queryFn: () => getPatients() });
 
   const createMut = useMutation({ mutationFn: createOtSchedule, onSuccess: () => { qc.invalidateQueries({ queryKey: ["ot-schedules"] }); toast.success("OT scheduled!"); setShowAdd(false); }, onError: (err: Error) => toast.error(err.message || "Failed to schedule surgery") });
+  const deleteMut = useMutation({
+    mutationFn: (id: number) => deleteOtSchedule(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["ot-schedules"] });
+      toast.success("Schedule deleted");
+      setDeleteId(null);
+    },
+    onError: (err: Error) => toast.error(err.message || "Delete failed"),
+  });
 
   const scheduled = schedules.filter(s => s.status === "Scheduled").length;
   const inProgress = schedules.filter(s => s.status === "InProgress").length;
@@ -56,7 +67,7 @@ export default function OtPage() {
         </div>
         {isLoading ? <div className="py-12 text-center text-muted">Loading...</div> : (
           <table className="data-table">
-            <thead><tr><th>Time</th><th>Patient</th><th>Surgery</th><th>Surgeon</th><th>Theatre</th><th>Anesthesia</th><th>Status</th></tr></thead>
+            <thead><tr><th>Time</th><th>Patient</th><th>Surgery</th><th>Surgeon</th><th>Theatre</th><th>Anesthesia</th><th>Status</th><th>Action</th></tr></thead>
             <tbody>
               {schedules.map(s => (
                 <tr key={s.id}>
@@ -67,12 +78,26 @@ export default function OtPage() {
                   <td>{s.theatre_name}</td>
                   <td>{s.anesthesia_type || "-"}</td>
                   <td><span className={`badge ${s.status === "Completed" ? "badge-green" : s.status === "InProgress" ? "badge-blue" : s.priority === "Emergency" ? "badge-red" : "badge-gray"}`}>{s.status}</span></td>
+                  <td>
+                    <button onClick={() => setDeleteId(s.id)} className="icon-btn hover:!text-danger"><Trash2 size={12} /></button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
       </div>
+
+      <ConfirmDialog
+        open={!!deleteId}
+        title="Delete OT Schedule"
+        message="Are you sure you want to delete this surgery schedule? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+        loading={deleteMut.isPending}
+        onConfirm={() => deleteId && deleteMut.mutate(deleteId)}
+        onCancel={() => setDeleteId(null)}
+      />
 
       {showAdd && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center">

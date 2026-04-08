@@ -1,9 +1,10 @@
 "use client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getInventory, getLowStockItems, updateStock, createInventoryItem, getExpiringInventory } from "@/lib/tauri";
+import { getInventory, getLowStockItems, updateStock, createInventoryItem, getExpiringInventory, deleteInventoryItem } from "@/lib/tauri";
 import { useState } from "react";
-import { Plus, Search, AlertTriangle, TrendingUp, TrendingDown, Package, Eye, Edit2, Clock } from "lucide-react";
+import { Plus, Search, AlertTriangle, TrendingUp, TrendingDown, Package, Eye, Edit2, Clock, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { ConfirmDialog } from "@/components/modules/ConfirmDialog";
 import type { InventoryItem } from "@/types";
 import { NewInventoryModal } from "@/components/modules/NewInventoryModal";
 import { EditInventoryModal } from "@/components/modules/EditInventoryModal";
@@ -21,6 +22,7 @@ export default function PharmacyPage() {
   const [showNewModal, setShowNewModal] = useState(false);
   const [editItem, setEditItem] = useState<InventoryItem | null>(null);
   const [historyItem, setHistoryItem] = useState<{id: number; name: string} | null>(null);
+  const [deleteId, setDeleteId] = useState<number | null>(null);
   const qc = useQueryClient();
 
   const { data: items = [], isLoading } = useQuery({ queryKey:["inventory",cat], queryFn:()=>getInventory(cat as InventoryItem["category"]||undefined) });
@@ -31,6 +33,16 @@ export default function PharmacyPage() {
     mutationFn:({id,qty,op}:{id:number;qty:number;op:"add"|"subtract"})=>updateStock(id,qty,op),
     onSuccess:()=>{ qc.invalidateQueries({queryKey:["inventory"]}); qc.invalidateQueries({queryKey:["low-stock"]}); toast.success("Stock updated"); },
     onError: (err: Error) => toast.error(err.message || "Failed to update stock"),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: number) => deleteInventoryItem(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["inventory"] });
+      toast.success("Item deleted");
+      setDeleteId(null);
+    },
+    onError: (err: Error) => toast.error(err.message || "Delete failed"),
   });
 
   const display = tab === "low" ? lowItems : tab === "expiring" ? expiringItems : items.filter(i=>!search||i.name.toLowerCase().includes(search.toLowerCase()));
@@ -139,6 +151,7 @@ export default function PharmacyPage() {
                           <button onClick={() => setEditItem(item)} className="icon-btn hover:!text-accent" title="Edit item"><Edit2 size={12} /></button>
                           <button onClick={()=>stockMut.mutate({id:item.id,qty:10,op:"add"})} className="icon-btn hover:!text-success" title="Add stock"><TrendingUp size={12} /></button>
                           <button onClick={()=>stockMut.mutate({id:item.id,qty:1,op:"subtract"})} className="icon-btn hover:!text-danger" title="Use stock"><TrendingDown size={12} /></button>
+                          <button onClick={() => setDeleteId(item.id)} className="icon-btn hover:!text-danger" title="Delete item"><Trash2 size={12} /></button>
                         </div>
                       </td>
                     </tr>
@@ -148,6 +161,17 @@ export default function PharmacyPage() {
             </table>
           </div>}
       </div>
+
+      <ConfirmDialog
+        open={!!deleteId}
+        title="Delete Inventory Item"
+        message="Are you sure you want to delete this item? This will also remove all its stock movement history."
+        confirmLabel="Delete"
+        variant="danger"
+        loading={deleteMut.isPending}
+        onConfirm={() => deleteId && deleteMut.mutate(deleteId)}
+        onCancel={() => setDeleteId(null)}
+      />
 
       <NewInventoryModal open={showNewModal} onClose={() => setShowNewModal(false)} />
       <EditInventoryModal item={editItem} open={!!editItem} onClose={() => setEditItem(null)} />

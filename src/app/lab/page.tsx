@@ -1,14 +1,16 @@
 "use client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getLabTests, updateLabStatus, uploadLabReport } from "@/lib/tauri";
+import { getLabTests, updateLabStatus, uploadLabReport, deleteLabTest } from "@/lib/tauri";
+import { sendLabResultNotification } from "@/lib/notifications";
 import { useState } from "react";
-import { Plus, Search, Upload, Eye, CheckCircle, FileUp, Share2, Mail, FileText } from "lucide-react";
+import { Plus, Search, Upload, Eye, CheckCircle, FileUp, Share2, Mail, FileText, Trash2 } from "lucide-react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { toast } from "sonner";
 import type { LabTest } from "@/types";
 import { openFile, sendMessage } from "@/lib/tauri";
 import { NewLabTestModal } from "@/components/modules/NewLabTestModal";
 import { LabResultEntryModal } from "@/components/modules/LabResultEntryModal";
+import { ConfirmDialog } from "@/components/modules/ConfirmDialog";
 
 const STATUS_BADGE: Record<LabTest["status"],string> = {
   "Ordered":"badge-blue","Sample Collected":"badge-yellow","Processing":"badge-purple","Ready":"badge-green","Reviewed":"badge-gray",
@@ -19,6 +21,7 @@ export default function LabPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [showNewModal, setShowNewModal] = useState(false);
+  const [deleteId, setDeleteId] = useState<number | null>(null);
   const [entryTest, setEntryTest] = useState<{id: number; test_name: string; test_category: string; patient_name?: string} | null>(null);
   const qc = useQueryClient();
 
@@ -29,7 +32,24 @@ export default function LabPage() {
 
   const mut = useMutation({
     mutationFn:({id,status}:{id:number;status:LabTest["status"]})=>updateLabStatus(id,status),
-    onSuccess:()=>{qc.invalidateQueries({queryKey:["lab-tests"]});toast.success("Status updated");},
+    onSuccess:(_, variables)=>{
+      qc.invalidateQueries({queryKey:["lab-tests"]});
+      toast.success("Status updated");
+      if (variables.status === "Ready") {
+        const test = tests.find(t => t.id === variables.id);
+        if (test) sendLabResultNotification(test.patient_name || "Patient", test.test_name);
+      }
+    },
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: number) => deleteLabTest(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["lab-tests"] });
+      toast.success("Lab test deleted");
+      setDeleteId(null);
+    },
+    onError: (err: Error) => toast.error(err.message || "Delete failed"),
   });
 
   const uploadMut = useMutation({
@@ -167,6 +187,7 @@ export default function LabPage() {
                         <button className="icon-btn hover:!text-purple" title="Upload PDF Report" onClick={() => handleUpload(t.id)}><FileUp size={12} /></button>
                         <button className="icon-btn hover:!text-green-500" title="Share via WhatsApp" onClick={() => handleShare(t, "WhatsApp")}><Share2 size={12} /></button>
                         <button className="icon-btn hover:!text-blue-400" title="Share via Email" onClick={() => handleShare(t, "Email")}><Mail size={12} /></button>
+                        <button className="icon-btn hover:!text-danger" title="Delete" onClick={() => setDeleteId(t.id)}><Trash2 size={12} /></button>
                       </div>
                     </td>
                   </tr>
@@ -175,6 +196,17 @@ export default function LabPage() {
             </table>
           </div>}
       </div>
+
+      <ConfirmDialog
+        open={!!deleteId}
+        title="Delete Lab Test"
+        message="Are you sure you want to delete this lab test? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+        loading={deleteMut.isPending}
+        onConfirm={() => deleteId && deleteMut.mutate(deleteId)}
+        onCancel={() => setDeleteId(null)}
+      />
 
       <NewLabTestModal open={showNewModal} onClose={() => setShowNewModal(false)} />
       {entryTest && <LabResultEntryModal labTest={entryTest} open={!!entryTest} onClose={() => setEntryTest(null)} />}

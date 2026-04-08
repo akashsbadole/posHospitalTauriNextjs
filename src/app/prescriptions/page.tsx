@@ -1,21 +1,35 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
-import { getPrescriptions } from "@/lib/tauri";
+import { getPrescriptions, deletePrescription } from "@/lib/tauri";
 import { useState } from "react";
-import { Plus, Search, Eye, Printer, FileText, Share2 } from "lucide-react";
+import { Plus, Search, Eye, Printer, FileText, Share2, Trash2, Mail } from "lucide-react";
 import { format, differenceInDays } from "date-fns";
 import { NewPrescriptionModal } from "@/components/modules/NewPrescriptionModal";
 import { PrescriptionPrintView } from "@/components/modules/PrescriptionPrintView";
 import { exportPrescriptionPdf, openFile, sendMessage } from "@/lib/tauri";
 import { toast } from "sonner";
 import type { Prescription } from "@/types";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { ConfirmDialog } from "@/components/modules/ConfirmDialog";
 
 export default function PrescriptionsPage() {
   const [search, setSearch] = useState("");
   const [showNewModal, setShowNewModal] = useState(false);
+  const [deleteId, setDeleteId] = useState<number | null>(null);
   const [printRx, setPrintRx] = useState<number | null>(null);
   const [viewRx, setViewRx] = useState<number | null>(null);
+  const qc = useQueryClient();
   const { data: rxList = [], isLoading } = useQuery({ queryKey:["prescriptions"], queryFn:()=>getPrescriptions() });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: number) => deletePrescription(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["prescriptions"] });
+      toast.success("Prescription deleted");
+      setDeleteId(null);
+    },
+    onError: (err: Error) => toast.error(err.message || "Delete failed"),
+  });
 
   const filtered = rxList.filter(rx =>
     !search || rx.patient_name?.toLowerCase().includes(search.toLowerCase()) || rx.rx_code.includes(search)
@@ -117,6 +131,7 @@ export default function PrescriptionsPage() {
                           <button onClick={() => setPrintRx(rx.id)} title="Web Print" className="icon-btn hover:!text-success"><Printer size={12} /></button>
                           <button onClick={() => handleShare(rx, "WhatsApp")} title="Share via WhatsApp" className="icon-btn hover:!text-green-500"><Share2 size={12} /></button>
                           <button onClick={() => handleShare(rx, "Email")} title="Share via Email" className="icon-btn hover:!text-blue"><Mail size={12} /></button>
+                          <button onClick={() => setDeleteId(rx.id)} title="Delete" className="icon-btn hover:!text-danger"><Trash2 size={12} /></button>
                         </div>
                       </td>
                     </tr>
@@ -126,6 +141,17 @@ export default function PrescriptionsPage() {
             </table>
           </div>}
       </div>
+
+      <ConfirmDialog
+        open={!!deleteId}
+        title="Delete Prescription"
+        message="Are you sure you want to delete this prescription? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+        loading={deleteMut.isPending}
+        onConfirm={() => deleteId && deleteMut.mutate(deleteId)}
+        onCancel={() => setDeleteId(null)}
+      />
 
       <NewPrescriptionModal open={showNewModal} onClose={() => setShowNewModal(false)} />
       <PrescriptionPrintView prescriptionId={viewRx ?? 0} open={viewRx !== null} onClose={() => setViewRx(null)} />

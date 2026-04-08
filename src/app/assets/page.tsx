@@ -1,9 +1,10 @@
 "use client";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getAssetCategories, createAssetCategory, getAssets, createAsset, getAssetMaintenance, createAssetMaintenance } from "@/lib/tauri";
+import { getAssetCategories, createAssetCategory, getAssets, createAsset, updateAsset, deleteAsset, getAssetMaintenance, createAssetMaintenance } from "@/lib/tauri";
 import { toast } from "sonner";
-import { QrCode, Plus, Wrench, AlertTriangle } from "lucide-react";
+import { QrCode, Plus, Wrench, AlertTriangle, Edit, Trash2 } from "lucide-react";
+import { ConfirmDialog } from "@/components/modules/ConfirmDialog";
 
 type Tab = "assets" | "categories" | "maintenance";
 
@@ -12,6 +13,8 @@ export default function AssetsPage() {
   const [showAddAsset, setShowAddAsset] = useState(false);
   const [showAddCategory, setShowAddCategory] = useState(false);
   const [showAddMaintenance, setShowAddMaintenance] = useState(false);
+  const [editAsset, setEditAsset] = useState<any>(null);
+  const [deleteId, setDeleteId] = useState<number | null>(null);
   const qc = useQueryClient();
 
   const { data: categories = [], isLoading: catLoading } = useQuery({ queryKey: ["asset-categories"], queryFn: getAssetCategories });
@@ -20,6 +23,24 @@ export default function AssetsPage() {
 
   const createCatMut = useMutation({ mutationFn: createAssetCategory, onSuccess: () => { qc.invalidateQueries({ queryKey: ["asset-categories"] }); toast.success("Category created!"); setShowAddCategory(false); }, onError: () => toast.error("Failed") });
   const createAssetMut = useMutation({ mutationFn: createAsset, onSuccess: () => { qc.invalidateQueries({ queryKey: ["assets"] }); toast.success("Asset added!"); setShowAddAsset(false); }, onError: () => toast.error("Failed") });
+  const updateAssetMut = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: any }) => updateAsset(id, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["assets"] });
+      toast.success("Asset updated!");
+      setEditAsset(null);
+    },
+    onError: () => toast.error("Failed to update asset"),
+  });
+  const deleteAssetMut = useMutation({
+    mutationFn: deleteAsset,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["assets"] });
+      toast.success("Asset deleted");
+      setDeleteId(null);
+    },
+    onError: () => toast.error("Failed to delete asset"),
+  });
   const createMaintMut = useMutation({ mutationFn: createAssetMaintenance, onSuccess: () => { qc.invalidateQueries({ queryKey: ["asset-maintenance"] }); toast.success("Maintenance logged!"); setShowAddMaintenance(false); }, onError: () => toast.error("Failed") });
 
   const totalValue = assets.reduce((sum, a) => sum + a.current_value, 0);
@@ -68,7 +89,7 @@ export default function AssetsPage() {
       <div className="card">
         {tab === "assets" && (assetLoading ? <div className="py-12 text-center text-muted">Loading...</div> : (
           <table className="data-table">
-            <thead><tr><th>Code</th><th>Name</th><th>Category</th><th>Location</th><th>Purchase Cost</th><th>Current Value</th><th>Status</th></tr></thead>
+            <thead><tr><th>Code</th><th>Name</th><th>Category</th><th>Location</th><th>Purchase Cost</th><th>Current Value</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody>
               {assets.map(a => (
                 <tr key={a.id}>
@@ -79,6 +100,12 @@ export default function AssetsPage() {
                   <td>₹{a.purchase_cost.toLocaleString()}</td>
                   <td>₹{a.current_value.toLocaleString()}</td>
                   <td><span className={`badge ${a.status === "Active" ? "badge-green" : a.status === "Under Maintenance" ? "badge-yellow" : "badge-red"}`}>{a.status}</span></td>
+                  <td>
+                    <div className="flex gap-1.5">
+                      <button onClick={() => setEditAsset(a)} className="icon-btn hover:!text-accent"><Edit size={12} /></button>
+                      <button onClick={() => setDeleteId(a.id)} className="icon-btn hover:!text-danger"><Trash2 size={12} /></button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -118,6 +145,63 @@ export default function AssetsPage() {
           </table>
         ))}
       </div>
+
+      <ConfirmDialog
+        open={!!deleteId}
+        title="Delete Asset"
+        message="Are you sure you want to delete this asset record?"
+        confirmLabel="Delete"
+        variant="danger"
+        loading={deleteAssetMut.isPending}
+        onConfirm={() => deleteId && deleteAssetMut.mutate(deleteId)}
+        onCancel={() => setDeleteId(null)}
+      />
+
+      {editAsset && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="bg-surface border border-border2 rounded-2xl w-[500px] p-6 space-y-4">
+            <h2 className="font-display font-bold text-lg">Edit Asset</h2>
+            <form onSubmit={e => {
+              e.preventDefault();
+              const f = e.target as HTMLFormElement;
+              updateAssetMut.mutate({
+                id: editAsset.id,
+                data: {
+                  asset_name: (f.elements.namedItem("asset_name") as HTMLInputElement).value,
+                  category_id: parseInt((f.elements.namedItem("category_id") as HTMLSelectElement).value),
+                  purchase_date: (f.elements.namedItem("purchase_date") as HTMLInputElement).value,
+                  purchase_cost: parseFloat((f.elements.namedItem("purchase_cost") as HTMLInputElement).value),
+                  current_value: parseFloat((f.elements.namedItem("current_value") as HTMLInputElement).value),
+                  warranty_expiry: (f.elements.namedItem("warranty_expiry") as HTMLInputElement).value || null,
+                  location: (f.elements.namedItem("location") as HTMLInputElement).value || null,
+                  status: (f.elements.namedItem("status") as HTMLSelectElement).value,
+                }
+              });
+            }}>
+              <div className="space-y-4">
+                <div><label className="form-label">Asset Name *</label><input name="asset_name" required className="input" defaultValue={editAsset.asset_name} /></div>
+                <div><label className="form-label">Category *</label><select name="category_id" required className="select" defaultValue={editAsset.category_id}>{categories.map(c => <option key={c.id} value={c.id}>{c.category_name}</option>)}</select></div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div><label className="form-label">Purchase Date *</label><input name="purchase_date" type="date" required className="input" defaultValue={editAsset.purchase_date} /></div>
+                  <div><label className="form-label">Purchase Cost *</label><input name="purchase_cost" type="number" required className="input" defaultValue={editAsset.purchase_cost} /></div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div><label className="form-label">Current Value *</label><input name="current_value" type="number" required className="input" defaultValue={editAsset.current_value} /></div>
+                  <div><label className="form-label">Warranty Expiry</label><input name="warranty_expiry" type="date" className="input" defaultValue={editAsset.warranty_expiry || ""} /></div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div><label className="form-label">Location</label><input name="location" className="input" defaultValue={editAsset.location || ""} /></div>
+                  <div><label className="form-label">Status</label><select name="status" className="select" defaultValue={editAsset.status}><option value="Active">Active</option><option value="Under Maintenance">Under Maintenance</option><option value="Disposed">Disposed</option></select></div>
+                </div>
+                <div className="flex gap-3 justify-end pt-2">
+                  <button type="button" onClick={() => setEditAsset(null)} className="btn btn-ghost">Cancel</button>
+                  <button type="submit" className="btn btn-primary" disabled={updateAssetMut.isPending}>Save Changes</button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {showAddAsset && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center">

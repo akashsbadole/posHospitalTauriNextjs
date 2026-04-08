@@ -1,11 +1,9 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
-import { getDashboardStats, getRevenueByRange, getPatients, getInvoices } from "@/lib/tauri";
+import { getDashboardStats, getMonthlyFinance, getDeptDistribution, getPatientFlow, getBedOccupancy } from "@/lib/tauri";
 import { useState } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, AreaChart, Area } from "recharts";
-import { format, subMonths, subDays, startOfMonth, endOfMonth } from "date-fns";
 
-const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const COLORS = ["#00d4ff","#00ff9d","#c77dff","#ffd93d","#ff6b6b","#8899bb"];
 
 const TIP = { contentStyle:{background:"#161d2a",border:"1px solid #1f2d42",borderRadius:"8px",fontSize:"12px",color:"#e8f0fe"}, cursor:{fill:"rgba(255,255,255,0.04)"} };
@@ -14,66 +12,54 @@ export default function AnalyticsPage() {
   const [range, setRange] = useState<"month"|"3months"|"year">("month");
   const { data: stats } = useQuery({ queryKey:["dashboard-stats"], queryFn:getDashboardStats });
 
-  const today = new Date();
-  let fromDate: Date;
-  let toDate = format(today, "yyyy-MM-dd");
-  
-  if (range === "month") {
-    fromDate = startOfMonth(today);
-  } else if (range === "3months") {
-    fromDate = subMonths(today, 3);
-  } else {
-    fromDate = subMonths(today, 12);
-  }
-
-  const { data: revenueData = [] } = useQuery({
-    queryKey: ["revenue", fromDate, toDate],
-    queryFn: () => getRevenueByRange(format(fromDate, "yyyy-MM-dd"), toDate),
+  const { data: financeData } = useQuery({
+    queryKey: ["analytics-finance"],
+    queryFn: getMonthlyFinance,
   });
 
-  const { data: patients = [] } = useQuery({
+  const { data: deptDist = [] } = useQuery<any[]>({
+    queryKey: ["analytics-dept"],
+    queryFn: getDeptDistribution,
+  });
+
+  const { data: patients = [] } = useQuery<any[]>({
     queryKey: ["patients"],
-    queryFn: () => getPatients(),
+    queryFn: () => import("@/lib/tauri").then(m => m.getPatients()),
   });
 
-  const { data: invoices = [] } = useQuery({
-    queryKey: ["invoices"],
-    queryFn: () => getInvoices(),
+  const { data: flowData = [] } = useQuery<any[]>({
+    queryKey: ["analytics-flow"],
+    queryFn: getPatientFlow,
+  });
+
+  const { data: occupancyData = [] } = useQuery<any[]>({
+    queryKey: ["analytics-occupancy"],
+    queryFn: getBedOccupancy,
   });
 
   const fmt = (n:number)=>`₹${(n/1000).toFixed(0)}K`;
 
-  const revenueChartData = MONTHS.map((m, i) => {
-    const monthRevenue = invoices
-      .filter(inv => {
-        const month = new Date(inv.issue_date).getMonth();
-        return month === i && new Date(inv.issue_date).getFullYear() === today.getFullYear();
-      })
-      .reduce((sum, inv) => sum + inv.paid_amount, 0);
-    return { month: m, revenue: monthRevenue || Math.random() * 200000 + 100000, expenses: Math.random() * 100000 + 50000 };
-  });
+  const revenueChartData = (financeData as any)?.revenue.map((r: any, i: number) => ({
+    month: r.month,
+    revenue: r.value,
+    expenses: (financeData as any).expenses[i]?.value ?? 0,
+  })) || [];
 
-  const deptData = ["General Medicine", "Cardiology", "Neurology", "Orthopedics", "Gynecology", "Pediatrics"].map((dept, i) => ({
-    name: dept,
-    val: patients.filter(p => p.department === dept).length || Math.floor(Math.random() * 30 + 10),
+  const deptData = deptDist.map((d: any) => ({
+    name: d.department,
+    val: d.count,
   }));
 
-  const bedOccupancyData = Array.from({length: 30}, (_, i) => {
-    const day = subDays(today, 29 - i);
-    return {
-      day: format(day, "d"),
-      occupied: Math.floor(Math.random() * 15 + 35),
-      available: Math.floor(50 - Math.random() * 15),
-    };
-  });
+  const bedOccupancyData = occupancyData.map((d: any) => ({
+    day: d.day,
+    occupied: d.value,
+    available: (stats?.total_beds ?? 50) - d.value,
+  }));
 
-  const patientFlowData = MONTHS.map((m, i) => ({
-    month: m,
-    new: patients.filter(p => {
-      const month = new Date(p.created_at).getMonth();
-      return month === i && new Date(p.created_at).getFullYear() === today.getFullYear();
-    }).length || Math.floor(Math.random() * 30 + 10),
-    discharged: Math.floor(Math.random() * 25 + 5),
+  const patientFlowData = flowData.map((d: any) => ({
+    month: d.month,
+    new: d.value,
+    discharged: Math.floor(d.value * 0.8), // Heuristic since we don't track historical discharge flow yet
   }));
 
   const departmentPerformance = [
@@ -158,7 +144,7 @@ export default function AnalyticsPage() {
             <ResponsiveContainer width="100%" height={200}>
               <PieChart>
                 <Pie data={deptData} dataKey="val" nameKey="name" cx="50%" cy="50%" innerRadius={55} outerRadius={85} paddingAngle={3}>
-                  {deptData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                  {deptData.map((_item: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                 </Pie>
                 <Tooltip {...TIP} />
               </PieChart>

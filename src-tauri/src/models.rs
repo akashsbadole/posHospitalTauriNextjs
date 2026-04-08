@@ -742,47 +742,6 @@ pub struct CreateEmployee {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct PayrollMonth {
-    pub id: i64,
-    pub month_year: String,
-    pub start_date: String,
-    pub end_date: String,
-    pub status: String,
-    pub created_at: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct CreatePayrollMonth {
-    pub month_year: String,
-    pub start_date: String,
-    pub end_date: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct PayrollEntry {
-    pub id: i64,
-    pub payroll_month_id: i64,
-    pub employee_id: i64,
-    pub employee_name: Option<String>,
-    pub basic_salary: f64,
-    pub allowances: f64,
-    pub deductions: f64,
-    pub net_salary: f64,
-    pub status: String,
-    pub processed_at: Option<String>,
-    pub created_at: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct CreatePayrollEntry {
-    pub payroll_month_id: i64,
-    pub employee_id: i64,
-    pub basic_salary: f64,
-    pub allowances: Option<f64>,
-    pub deductions: Option<f64>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LeaveRequest {
     pub id: i64,
     pub employee_id: i64,
@@ -961,6 +920,30 @@ pub struct CreateOpdQueueSettings {
 // ─────────────────────────────────────────
 // DISCHARGE SUMMARY
 // ─────────────────────────────────────────
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DepartmentDistribution {
+    pub department: String,
+    pub count: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MonthlyData {
+    pub month: String,
+    pub value: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DailyData {
+    pub day: String,
+    pub value: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MonthlyFinanceAnalytics {
+    pub revenue: Vec<MonthlyData>,
+    pub expenses: Vec<MonthlyData>,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DischargeSummary {
     pub id: i64,
