@@ -252,7 +252,7 @@ pub struct CreateLabTest {
 pub struct UpdateLabResult {
     pub result_value: String,
     pub result_unit: String,
-    pub is_abnormal: bool,
+    pub is_abnormal: Option<bool>,
     pub notes: Option<String>,
 }
 
@@ -1447,4 +1447,96 @@ pub struct UpdateSupportTicket {
     pub status: Option<String>,
     pub assigned_to: Option<i64>,
     pub priority: Option<String>,
+}
+
+// ─── HOUSEKEEPING ─────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct HousekeepingTask {
+    pub id: i64,
+    pub task_code: String,
+    pub task_type: String,
+    pub location: String,
+    pub ward_id: Option<i64>,
+    pub ward_name: Option<String>,
+    pub priority: String,
+    pub status: String,
+    pub assigned_to: Option<i64>,
+    pub assigned_name: Option<String>,
+    pub scheduled_date: String,
+    pub completed_date: Option<String>,
+    pub notes: Option<String>,
+    pub created_by: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateHousekeepingTask {
+    pub task_type: String,
+    pub location: String,
+    pub ward_id: Option<i64>,
+    pub priority: Option<String>,
+    pub assigned_to: Option<i64>,
+    pub scheduled_date: String,
+    pub notes: Option<String>,
+    pub created_by: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateHousekeepingTask {
+    pub status: Option<String>,
+    pub assigned_to: Option<i64>,
+    pub priority: Option<String>,
+    pub notes: Option<String>,
+}
+
+// ─── MAINTENANCE ─────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct MaintenanceRequest {
+    pub id: i64,
+    pub request_code: String,
+    pub category: String,
+    pub item_name: String,
+    pub location: String,
+    pub ward_id: Option<i64>,
+    pub ward_name: Option<String>,
+    pub priority: String,
+    pub status: String,
+    pub description: String,
+    pub assigned_to: Option<i64>,
+    pub assigned_name: Option<String>,
+    pub estimated_cost: Option<f64>,
+    pub actual_cost: Option<f64>,
+    pub requested_by: Option<String>,
+    pub requested_date: String,
+    pub completed_date: Option<String>,
+    pub notes: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateMaintenanceRequest {
+    pub category: String,
+    pub item_name: String,
+    pub location: String,
+    pub ward_id: Option<i64>,
+    pub priority: Option<String>,
+    pub description: String,
+    pub assigned_to: Option<i64>,
+    pub estimated_cost: Option<f64>,
+    pub requested_by: Option<String>,
+    pub requested_date: String,
+    pub notes: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateMaintenanceRequest {
+    pub status: Option<String>,
+    pub assigned_to: Option<i64>,
+    pub priority: Option<String>,
+    pub actual_cost: Option<f64>,
+    pub notes: Option<String>,
 }

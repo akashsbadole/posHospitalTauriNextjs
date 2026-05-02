@@ -5,6 +5,7 @@ import { useAppStore } from "@/store";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import { Lock } from "lucide-react";
+import { loginUser } from "@/lib/tauri";
 
 const TITLES: Record<string, string> = {
   "/dashboard":    "Dashboard",
@@ -31,6 +32,8 @@ const TITLES: Record<string, string> = {
   "/blood-bank":   "Blood Bank",
   "/ambulance":    "Ambulance",
   "/expenses":     "Expense Management",
+  "/housekeeping": "Housekeeping",
+  "/maintenance":  "Maintenance",
 };
 
 const TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes default
@@ -38,15 +41,22 @@ const TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes default
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { isAuthenticated, authUser } = useAppStore();
+  const { isAuthenticated, authUser, setIsAuthenticated } = useAppStore();
   const [lastActivity, setLastActivity] = useState(Date.now());
   const [showLockScreen, setShowLockScreen] = useState(false);
+  const [password, setPassword] = useState("");
+  const [unlockError, setUnlockError] = useState<string | null>(null);
+  const [unlocking, setUnlocking] = useState(false);
 
   const title = TITLES[pathname] ?? "MediCore";
 
   const resetActivity = useCallback(() => {
     setLastActivity(Date.now());
-    if (showLockScreen) setShowLockScreen(false);
+    // Only reset activity and hide lock screen if not currently showing lock screen
+    // This prevents bypassing the lock screen via user activity
+    if (!showLockScreen) {
+      // Activity resets the timer but doesn't unlock if locked
+    }
   }, [showLockScreen]);
 
   useEffect(() => {
@@ -56,7 +66,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     events.forEach(e => window.addEventListener(e, resetActivity));
 
     const interval = setInterval(() => {
-      const timeout = parseInt(localStorage.getItem("session_timeout") || "30") * 60 * 1000;
+      const rawTimeout = parseInt(localStorage.getItem("session_timeout") || "30");
+      const timeout = Math.max(5, Math.min(120, rawTimeout)) * 60 * 1000; // Clamp between 5-120 minutes
       if (Date.now() - lastActivity > timeout) {
         setShowLockScreen(true);
       }
@@ -68,8 +79,29 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     };
   }, [isAuthenticated, authUser, lastActivity, resetActivity]);
 
-  const handleUnlock = () => {
-    resetActivity();
+  const handleUnlock = async () => {
+    setUnlockError(null);
+    if (!authUser) return;
+    setUnlocking(true);
+    try {
+      await loginUser(authUser.username, password);
+      setPassword("");
+      setShowLockScreen(false);
+    } catch (err: any) {
+      setUnlockError(err.message || "Invalid credentials");
+      setPassword("");
+    } finally {
+      setUnlocking(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !unlocking) handleUnlock();
+  };
+
+  const handleLock = () => {
+    setShowLockScreen(true);
+    setPassword("");
   };
 
   if (showLockScreen) {
@@ -81,8 +113,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
           <h1 className="font-display font-bold text-xl text-white mb-2">Session Locked</h1>
           <p className="text-sm text-muted mb-6">Your session has expired due to inactivity</p>
-          <button onClick={handleUnlock} className="btn btn-primary w-full">
-            Unlock Session
+          <p className="text-sm text-muted mb-4">Please re-enter your password to continue</p>
+          <input
+            type="password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Password"
+            className="w-full mb-3"
+            disabled={unlocking}
+          />
+          {unlockError && <p className="text-danger text-sm mb-3">{unlockError}</p>}
+          <button onClick={handleUnlock} className="btn btn-primary w-full" disabled={unlocking}>
+            {unlocking ? "Verifying..." : "Unlock"}
           </button>
         </div>
       </div>
@@ -91,7 +134,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <Sidebar />
+      <Sidebar onLock={handleLock} />
       <div className="flex-1 flex flex-col overflow-hidden">
         <Topbar title={title} />
         <main className="flex-1 overflow-y-auto p-6 bg-bg">

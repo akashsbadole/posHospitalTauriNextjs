@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAppStore } from "@/store";
 import { loginUser, createUser } from "@/lib/tauri";
@@ -20,7 +20,25 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-  const { setAuthUser, setIsAuthenticated } = useAppStore();
+  const { setAuthUser, setIsAuthenticated, isAuthenticated, hydrated } = useAppStore();
+
+  useEffect(() => {
+    if (hydrated && isAuthenticated) {
+      router.replace("/dashboard");
+    }
+  }, [hydrated, isAuthenticated, router]);
+
+  if (!hydrated) {
+    return (
+      <div className="min-h-screen bg-bg flex items-center justify-center">
+        <div className="text-muted">Loading...</div>
+      </div>
+    );
+  }
+
+  if (isAuthenticated) {
+    return null;
+  }
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();

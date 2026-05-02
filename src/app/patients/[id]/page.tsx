@@ -165,7 +165,18 @@ export default function PatientDetailPage() {
     return <div className="p-8 text-center text-muted">Patient not found</div>;
   }
 
-  const age = new Date().getFullYear() - new Date(patient.dob).getFullYear();
+  function calculateAge(dob: string): number {
+  const birth = new Date(dob);
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const monthDiff = today.getMonth() - birth.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+    age--;
+  }
+  return age;
+}
+
+  const age = calculateAge(patient.dob);
 
   return (
     <div>

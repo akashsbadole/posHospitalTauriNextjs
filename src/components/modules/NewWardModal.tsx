@@ -48,7 +48,13 @@ export function NewWardModal({ open, onClose }: Props) {
       onClose();
       reset();
     },
-    onError: () => toast.error("Failed to create ward"),
+    onError: (error: unknown) => {
+    if (error instanceof Error) {
+      toast.error(error.message)
+    } else {
+      toast.error("Failed to create ward - unknown error occurred")
+    }
+  },
   });
 
   if (!open) return null;

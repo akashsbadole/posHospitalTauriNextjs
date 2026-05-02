@@ -8,7 +8,7 @@ import {
   BarChart3, FileText, Settings, Activity, ChevronLeft,
   QrCode, MessageSquare, Wallet, Briefcase, MonitorPlay,
   Scissors, AlertTriangle, Droplet, Car, DollarSign, Bell,
-  LifeBuoy,
+  LifeBuoy, Sparkles, Wrench,
 } from "lucide-react";
 import { useAppStore } from "@/store";
 
@@ -35,6 +35,8 @@ const NAV = [
     { href:"/assets",   icon:QrCode,    label:"Asset Management" },
     { href:"/blood-bank", icon:Droplet,  label:"Blood Bank" },
     { href:"/ambulance",   icon:Car,      label:"Ambulance" },
+    { href:"/housekeeping", icon:Sparkles, label:"Housekeeping" },
+    { href:"/maintenance",  icon:Wrench,   label:"Maintenance" },
   ]},
   { section: "Finance", items: [
     { href:"/billing",     icon:CreditCard,   label:"Billing & Invoice" },
@@ -53,7 +55,7 @@ const NAV = [
   ]},
 ];
 
-export function Sidebar() {
+export function Sidebar({ onLock }: { onLock: () => void }) {
   const pathname = usePathname();
   const { sidebarCollapsed, toggleSidebar } = useAppStore();
 
@@ -99,13 +101,13 @@ export function Sidebar() {
             {sidebarCollapsed && <div className="h-3" />}
             {section.items.map((item) => {
               const Icon = item.icon;
-              const isActive = pathname === item.href || (item.href === "/dashboard" && pathname === "/");
+              const isActive = pathname === item.href || (item.href === "/dashboard" && pathname === "/") || (item.href !== "/dashboard" && pathname.startsWith(item.href));
               return (
                 <Link key={item.href} href={item.href}
                   title={sidebarCollapsed ? item.label : undefined}
                   className={clsx(
                     "flex items-center gap-2.5 py-2 rounded-lg text-[13.5px] font-medium transition-all duration-150 relative mb-px",
-                    sidebarCollapsed ? "px-2 justify-center" : "px-2.5",
+                    sidebarCollapsed ? "px-2 justify-center w-[44px]" : "px-2.5",
                     isActive ? "bg-accent/10 text-accent" : "text-muted hover:bg-surface2 hover:text-white"
                   )}
                 >

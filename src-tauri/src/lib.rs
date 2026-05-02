@@ -245,6 +245,16 @@ pub fn run() {
             commands::create_support_ticket,
             commands::update_support_ticket,
             commands::delete_support_ticket,
+            // Housekeeping
+            commands::get_housekeeping_tasks,
+            commands::create_housekeeping_task,
+            commands::update_housekeeping_task,
+            commands::delete_housekeeping_task,
+            // Maintenance
+            commands::get_maintenance_requests,
+            commands::create_maintenance_request,
+            commands::update_maintenance_request,
+            commands::delete_maintenance_request,
             // Analytics
             commands::get_analytics_monthly_finance,
             commands::get_analytics_department_distribution,

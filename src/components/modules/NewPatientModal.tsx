@@ -118,7 +118,13 @@ export function NewPatientModal({ open, onClose }: { open: boolean; onClose: () 
       qc.invalidateQueries({ queryKey: ["opd-tokens"] });
       reset(); onClose();
     },
-    onError: (err: Error) => toast.error(err.message || "Failed to register patient"),
+    onError: (error: unknown) => {
+    if (error instanceof Error) {
+      toast.error(error.message)
+    } else {
+      toast.error("Failed to register patient - unknown error occurred")
+    }
+  },
   });
 
   if (!open) return null;

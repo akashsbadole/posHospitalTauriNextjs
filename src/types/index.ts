@@ -15,6 +15,27 @@ export type PaymentMethod = "Cash" | "Card" | "UPI" | "Insurance" | "Net Banking
 export type LabCategory = "Hematology" | "Biochemistry" | "Microbiology" | "Pathology" | "Radiology" | "Cardiology" | "Immunology";
 export type ClaimStatus = "Draft" | "Submitted" | "Under Review" | "Approved" | "Rejected" | "Paid";
 
+// API Input Types
+export interface CreatePatient {
+  full_name: string;
+  dob: string;
+  gender: string;
+  phone: string;
+  email?: string;
+  blood_group: BloodGroup;
+  address?: string;
+  emergency_contact?: string;
+  emergency_phone?: string;
+  allergies?: string;
+  chronic_conditions?: string;
+  department: Department;
+  assigned_doctor_id?: number;
+  status?: PatientStatus;
+  insurance_provider?: string;
+  insurance_number?: string;
+  photo_path?: string;
+}
+
 export interface Patient {
   id: number; patient_code: string; full_name: string; dob: string;
   gender: "Male" | "Female" | "Other"; phone: string; email?: string;
@@ -424,4 +445,86 @@ export interface SupportTicket {
   assigned_user_name?: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface HousekeepingTask {
+  id: number;
+  task_code: string;
+  task_type: "Cleaning" | "Sanitation" | "Laundry" | "Waste Management" | "Deep Cleaning" | "Inspection";
+  location: string;
+  ward_id?: number;
+  ward_name?: string;
+  priority: "Low" | "Normal" | "High" | "Urgent";
+  status: "Pending" | "In Progress" | "Completed" | "Verified" | "Cancelled";
+  assigned_to?: number;
+  assigned_name?: string;
+  scheduled_date: string;
+  completed_date?: string;
+  notes?: string;
+  created_by?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateHousekeepingTask {
+  task_type: HousekeepingTask["task_type"];
+  location: string;
+  ward_id?: number;
+  priority?: HousekeepingTask["priority"];
+  assigned_to?: number;
+  scheduled_date: string;
+  notes?: string;
+  created_by?: string;
+}
+
+export interface UpdateHousekeepingTask {
+  status?: HousekeepingTask["status"];
+  assigned_to?: number;
+  priority?: HousekeepingTask["priority"];
+  notes?: string;
+}
+
+export interface MaintenanceRequest {
+  id: number;
+  request_code: string;
+  category: "Equipment" | "Electrical" | "Plumbing" | "HVAC" | "Furniture" | "IT Infrastructure" | "Building" | "Other";
+  item_name: string;
+  location: string;
+  ward_id?: number;
+  ward_name?: string;
+  priority: "Low" | "Normal" | "High" | "Critical";
+  status: "Pending" | "Assigned" | "In Progress" | "Completed" | "Cancelled";
+  description: string;
+  assigned_to?: number;
+  assigned_name?: string;
+  estimated_cost?: number;
+  actual_cost?: number;
+  requested_by?: string;
+  requested_date: string;
+  completed_date?: string;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateMaintenanceRequest {
+  category: MaintenanceRequest["category"];
+  item_name: string;
+  location: string;
+  ward_id?: number;
+  priority?: MaintenanceRequest["priority"];
+  description: string;
+  assigned_to?: number;
+  estimated_cost?: number;
+  requested_by?: string;
+  requested_date: string;
+  notes?: string;
+}
+
+export interface UpdateMaintenanceRequest {
+  status?: MaintenanceRequest["status"];
+  assigned_to?: number;
+  priority?: MaintenanceRequest["priority"];
+  actual_cost?: number;
+  notes?: string;
 }

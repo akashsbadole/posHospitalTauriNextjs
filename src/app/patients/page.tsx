@@ -1,7 +1,7 @@
 "use client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getPatients, deletePatient } from "@/lib/tauri";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Search, Filter, Download, Eye, Edit, Trash2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
@@ -11,6 +11,7 @@ import { NewPatientModal } from "@/components/modules/NewPatientModal";
 import { ConfirmDialog } from "@/components/modules/ConfirmDialog";
 import { Pagination } from "@/components/ui/Pagination";
 import { format } from "date-fns";
+import { calculateAge } from "@/lib/utils/date";
 
 const STATUS_BADGE: Record<PatientStatus, string> = {
   Active:"badge-green", Admitted:"badge-yellow", Discharged:"badge-gray", Critical:"badge-red", OPD:"badge-blue",
@@ -23,7 +24,6 @@ const ITEMS_PER_PAGE = 50;
 export default function PatientsPage() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
-  const [searchTimeout, setSearchTimeout] = useState<NodeJS.Timeout | null>(null);
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [editPatient, setEditPatient] = useState<any>(null);
@@ -32,12 +32,20 @@ export default function PatientsPage() {
   const router = useRouter();
   const qc = useQueryClient();
 
-  const handleSearch = (value: string) => {
-    setSearch(value);
-    if (searchTimeout) clearTimeout(searchTimeout);
-    const timeout = setTimeout(() => setDebouncedSearch(value), 300);
-    setSearchTimeout(timeout);
-  };
+  useEffect(() => {
+    return () => {
+      setDebouncedSearch("");
+    };
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearch, status]);
 
   const { data: patients = [], isLoading } = useQuery({
     queryKey: ["patients", debouncedSearch, status],
@@ -109,7 +117,7 @@ export default function PatientsPage() {
       <div className="flex gap-3 mb-4">
         <div className="flex-1 relative">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-subtle" />
-          <input value={search} onChange={e=>handleSearch(e.target.value)} placeholder="Search by name, phone, patient code…" className="pl-9" />
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search by name, phone, patient code…" className="pl-9" />
         </div>
         <select value={status} onChange={e=>setStatus(e.target.value)} className="w-40">
           <option value="">All Status</option>
@@ -131,10 +139,10 @@ export default function PatientsPage() {
                   <th>Patient</th><th>Code</th><th>Age/Gender</th><th>Blood</th>
                   <th>Department</th><th>Doctor</th><th>Phone</th><th>Insurance</th><th>Status</th><th>Actions</th>
                 </tr></thead>
-                <tbody>
-                  {paginatedPatients.map((p, i) => {
-                    const age = new Date().getFullYear() - new Date(p.dob).getFullYear();
-                    return (
+                  <tbody>
+                   {paginatedPatients.map((p, i) => {
+                     const age = calculateAge(p.dob);
+                     return (
                       <tr key={p.id}>
                         <td>
                           <div className="flex items-center gap-2.5">

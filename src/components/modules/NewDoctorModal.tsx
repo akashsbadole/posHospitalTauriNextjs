@@ -49,7 +49,13 @@ export function NewDoctorModal({ open, onClose }: Props) {
       onClose();
       reset();
     },
-    onError: () => toast.error("Failed to add doctor"),
+    onError: (error: unknown) => {
+    if (error instanceof Error) {
+      toast.error(error.message)
+    } else {
+      toast.error("Failed to add doctor - unknown error occurred")
+    }
+  },
   });
 
   if (!open) return null;

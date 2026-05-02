@@ -1,13 +1,13 @@
 "use client";
-import { useEffect } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAppStore } from "@/store";
 
 const PUBLIC_PATHS = ["/login", "/api/auth"];
 
 const ROLE_PERMISSIONS: Record<string, string[]> = {
-  Admin: ["/dashboard", "/patients", "/appointments", "/prescriptions", "/lab", "/wards", "/staff", "/pharmacy", "/billing", "/insurance", "/analytics", "/audit", "/settings", "/ot", "/emergency", "/blood-bank", "/ambulance", "/expenses", "/hr", "/assets", "/revenue", "/discharge", "/opd-queue", "/messages"],
-  Doctor: ["/dashboard", "/patients", "/appointments", "/prescriptions", "/lab", "/wards", "/ot", "/emergency", "/discharge", "/opd-queue"],
+  Admin: ["/dashboard", "/patients", "/appointments", "/prescriptions", "/lab", "/wards", "/staff", "/pharmacy", "/billing", "/insurance", "/analytics", "/audit", "/settings", "/ot", "/emergency", "/blood-bank", "/ambulance", "/expenses", "/hr", "/assets", "/revenue", "/discharge", "/opd-queue", "/messages", "/feedback"],
+  Doctor: ["/dashboard", "/patients", "/appointments", "/prescriptions", "/lab", "/wards", "/ot", "/emergency", "/discharge", "/opd-queue", "/feedback"],
   Nurse: ["/dashboard", "/patients", "/wards", "/lab"],
   Receptionist: ["/dashboard", "/patients", "/appointments", "/billing"],
   Pharmacist: ["/dashboard", "/pharmacy", "/prescriptions"],
@@ -17,37 +17,37 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { isAuthenticated, authUser } = useAppStore();
+  const { isAuthenticated, authUser, hydrated } = useAppStore();
+  const [isHydrated, setIsHydrated] = useState(hydrated);
 
   useEffect(() => {
-    const isPublic = PUBLIC_PATHS.some(p => pathname.startsWith(p));
-    
+    setIsHydrated(hydrated);
+  }, [hydrated]);
+
+  const isPublic = PUBLIC_PATHS.some(p => pathname.startsWith(p));
+  
+  const hasRoleAccess = useMemo(() => {
+    if (!isAuthenticated || !authUser?.role) return false;
+    const allowedPaths = ROLE_PERMISSIONS[authUser.role] || [];
+    return allowedPaths.some(p => pathname === p || pathname.startsWith(p + "/") || pathname === "/dashboard");
+  }, [isAuthenticated, authUser, pathname]);
+
+  // Handle navigation in effect to avoid setState during render
+  useEffect(() => {
+    if (!isHydrated) return;
+
     if (!isPublic && !isAuthenticated) {
       router.replace("/login");
-    }
-    
-    if (pathname === "/login" && isAuthenticated) {
+    } else if (pathname === "/login" && isAuthenticated) {
+      router.replace("/dashboard");
+    } else if (isAuthenticated && authUser?.role && !hasRoleAccess && pathname !== "/dashboard") {
       router.replace("/dashboard");
     }
+  }, [isHydrated, isPublic, isAuthenticated, pathname, authUser?.role, hasRoleAccess, router]);
 
-    // Role-based access control
-    if (isAuthenticated && authUser?.role) {
-      const allowedPaths = ROLE_PERMISSIONS[authUser.role] || [];
-      const hasAccess = allowedPaths.some(p => pathname.startsWith(p) || pathname === p);
-      
-      if (!hasAccess && pathname !== "/dashboard") {
-        // Redirect to dashboard if no access
-        router.replace("/dashboard");
-      }
-    }
-  }, [isAuthenticated, pathname, router, authUser]);
-
-  if (!isAuthenticated && !PUBLIC_PATHS.some(p => pathname.startsWith(p))) {
-    return (
-      <div className="min-h-screen bg-bg flex items-center justify-center">
-        <div className="text-muted">Loading...</div>
-      </div>
-    );
+  // Don't render anything while hydrating or redirecting
+  if (!isHydrated) {
+    return null;
   }
 
   return <>{children}</>;

@@ -35,6 +35,15 @@ export function WeeklyCalendar({ onDateSelect }: WeeklyCalendarProps) {
     });
   };
 
+  const getAppointmentsOutsideHours = (date: Date) => {
+    return weekAppointments.filter(a => {
+      const aptDate = new Date(a.appointment_date);
+      if (!isSameDay(aptDate, date)) return false;
+      const hour = a.appointment_time.substring(0, 2);
+      return !HOURS.some(h => h.startsWith(hour));
+    });
+  };
+
   const statusColors: Record<string, string> = {
     "Scheduled": "bg-accent/20 border-accent text-accent",
     "Checked In": "bg-success/20 border-success text-success",
@@ -113,6 +122,29 @@ export function WeeklyCalendar({ onDateSelect }: WeeklyCalendarProps) {
                 })}
               </div>
             ))}
+            {/* Other appointments outside defined hours */}
+            <div className="grid grid-cols-8 border-b border-border/50 bg-surface2/30">
+              <div className="p-2 text-xs text-subtle font-mono">Other</div>
+              {days.map(day => {
+                const otherAppts = getAppointmentsOutsideHours(day);
+                return (
+                  <div
+                    key={`other-${day.toISOString()}`}
+                    className="p-1 min-h-[60px] border-l border-border/30"
+                  >
+                    {otherAppts.map(apt => (
+                      <div
+                        key={apt.id}
+                        className="text-[10px] px-1.5 py-0.5 rounded border mb-0.5 truncate bg-warning/10 border-warning/30 text-warning"
+                        title={`${apt.patient_name} - ${apt.appointment_time}`}
+                      >
+                        {apt.patient_name?.split(" ")[0]} ({apt.appointment_time})
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       </div>

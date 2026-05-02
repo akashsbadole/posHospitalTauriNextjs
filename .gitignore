@@ -176,3 +176,4 @@ release/
 *.map
 src/components/layout/ClientLayout.tsx
 src-tauri/src/db.rs
+nul

@@ -6,6 +6,7 @@ use rusqlite::params;
 
 pub type DbPool = Pool<SqliteConnectionManager>;
 
+#[derive(Clone)]
 pub struct AppState {
     pub pool: DbPool,
 }
@@ -62,13 +63,16 @@ fn run_gst_migrations(conn: &rusqlite::Connection) -> Result<()> {
     // Add visit_type and diagnosis to visits table
     if !column_exists(conn, "visits", "visit_type")? {
         eprintln!("[MIGRATION] Adding visit_type column to visits table");
-        conn.execute("ALTER TABLE visits ADD COLUMN visit_type TEXT DEFAULT 'OPD'", [])?;
+        conn.execute(
+            "ALTER TABLE visits ADD COLUMN visit_type TEXT DEFAULT 'OPD'",
+            [],
+        )?;
     }
     if !column_exists(conn, "visits", "diagnosis")? {
         eprintln!("[MIGRATION] Adding diagnosis column to visits table");
         conn.execute("ALTER TABLE visits ADD COLUMN diagnosis TEXT", [])?;
     }
-    
+
     // Add photo_path column to patients table if it doesn't exist
     if !column_exists(conn, "patients", "photo_path")? {
         eprintln!("[MIGRATION] Adding photo_path column to patients table");
@@ -78,13 +82,21 @@ fn run_gst_migrations(conn: &rusqlite::Connection) -> Result<()> {
     // Add priority column to opd_tokens table if it doesn't exist
     if !column_exists(conn, "opd_tokens", "priority")? {
         eprintln!("[MIGRATION] Adding priority column to opd_tokens table");
-        conn.execute("ALTER TABLE opd_tokens ADD COLUMN priority INTEGER NOT NULL DEFAULT 0", [])?;
+        conn.execute(
+            "ALTER TABLE opd_tokens ADD COLUMN priority INTEGER NOT NULL DEFAULT 0",
+            [],
+        )?;
     }
 
     // Add visit_id to various tables
     let tables_needing_visit_id = [
-        "opd_tokens", "appointments", "prescriptions", "lab_tests",
-        "invoices", "medical_records", "vital_signs"
+        "opd_tokens",
+        "appointments",
+        "prescriptions",
+        "lab_tests",
+        "invoices",
+        "medical_records",
+        "vital_signs",
     ];
     for table in tables_needing_visit_id {
         if !column_exists(conn, table, "visit_id")? {
@@ -103,28 +115,54 @@ fn run_gst_migrations(conn: &rusqlite::Connection) -> Result<()> {
     // Add is_deleted to patients table for soft delete
     if !column_exists(conn, "patients", "is_deleted")? {
         eprintln!("[MIGRATION] Adding is_deleted column to patients table");
-        conn.execute("ALTER TABLE patients ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0", [])?;
+        conn.execute(
+            "ALTER TABLE patients ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0",
+            [],
+        )?;
     }
 
     // Add cost column to lab_tests table if it doesn't exist
     if !column_exists(conn, "lab_tests", "cost")? {
         eprintln!("[MIGRATION] Adding cost column to lab_tests table");
-        conn.execute("ALTER TABLE lab_tests ADD COLUMN cost REAL NOT NULL DEFAULT 0", [])?;
+        conn.execute(
+            "ALTER TABLE lab_tests ADD COLUMN cost REAL NOT NULL DEFAULT 0",
+            [],
+        )?;
     }
 
     // Add base_charge column to wards table if it doesn't exist
     if !column_exists(conn, "wards", "base_charge")? {
         eprintln!("[MIGRATION] Adding base_charge column to wards table");
-        conn.execute("ALTER TABLE wards ADD COLUMN base_charge REAL NOT NULL DEFAULT 500", [])?;
+        conn.execute(
+            "ALTER TABLE wards ADD COLUMN base_charge REAL NOT NULL DEFAULT 500",
+            [],
+        )?;
     }
 
     if !column_exists(conn, "audit_logs", "ip_address")? {
         eprintln!("[MIGRATION] Adding ip_address column to audit_logs table");
         conn.execute("ALTER TABLE audit_logs ADD COLUMN ip_address TEXT", [])?;
     }
-    
+
+    // Soft delete support for appointments, prescriptions, lab_tests
+    for (table, col) in &[
+        ("appointments", "is_deleted"),
+        ("prescriptions", "is_deleted"),
+        ("lab_tests", "is_deleted"),
+    ] {
+        if !column_exists(conn, *table, *col)? {
+            eprintln!("[MIGRATION] Adding {} column to {} table", col, table);
+            let sql = format!(
+                "ALTER TABLE {} ADD COLUMN {} INTEGER NOT NULL DEFAULT 0",
+                table, col
+            );
+            conn.execute(&sql, [])?;
+        }
+    }
+
     // Support Tickets table
-    conn.execute_batch("
+    conn.execute_batch(
+        "
         CREATE TABLE IF NOT EXISTS support_tickets (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             ticket_code     TEXT NOT NULL UNIQUE,
@@ -138,38 +176,86 @@ fn run_gst_migrations(conn: &rusqlite::Connection) -> Result<()> {
             created_at      TEXT NOT NULL DEFAULT (datetime('now')),
             updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
         );
-    ")?;
+    ",
+    )?;
 
     Ok(())
 }
 
 fn seed_data(conn: &rusqlite::Connection) -> Result<()> {
     use rusqlite::params;
+    use rand::{thread_rng, Rng};
+    use rand::distributions::Alphanumeric;
 
     let count: i64 = conn.query_row("SELECT COUNT(*) FROM users", [], |r| r.get(0))?;
     if count > 0 {
         return Ok(());
     }
 
-    let admin_hash = bcrypt::hash("admin123", 10)?;
-    let doctor_hash = bcrypt::hash("doctor123", 10)?;
-    let nurse_hash = bcrypt::hash("nurse123", 10)?;
-    let reception_hash = bcrypt::hash("reception123", 10)?;
-    let pharma_hash = bcrypt::hash("pharma123", 10)?;
-    let account_hash = bcrypt::hash("account123", 10)?;
+    // Generate strong random passwords (16 chars) - must be changed on first login
+    let generate_password = || -> String {
+        thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(16)
+            .map(char::from)
+            .collect()
+    };
+
+    let admin_pass = std::env::var("ADMIN_PASSWORD")
+        .map(|p| bcrypt::hash(&p, 10))
+        .unwrap_or_else(|_| {
+            let p = generate_password();
+            eprintln!("[WARN] ADMIN_PASSWORD not set. Generated temporary password. CHANGE IMMEDIATELY.");
+            bcrypt::hash(&p, 10)
+        })?;
+    let doctor_pass = std::env::var("DOCTOR_PASSWORD")
+        .map(|p| bcrypt::hash(&p, 10))
+        .unwrap_or_else(|_| {
+            let p = generate_password();
+            eprintln!("[WARN] DOCTOR_PASSWORD not set. Generated temporary password. CHANGE IMMEDIATELY.");
+            bcrypt::hash(&p, 10)
+        })?;
+    let nurse_pass = std::env::var("NURSE_PASSWORD")
+        .map(|p| bcrypt::hash(&p, 10))
+        .unwrap_or_else(|_| {
+            let p = generate_password();
+            eprintln!("[WARN] NURSE_PASSWORD not set. Generated temporary password. CHANGE IMMEDIATELY.");
+            bcrypt::hash(&p, 10)
+        })?;
+    let reception_pass = std::env::var("RECEPTION_PASSWORD")
+        .map(|p| bcrypt::hash(&p, 10))
+        .unwrap_or_else(|_| {
+            let p = generate_password();
+            eprintln!("[WARN] RECEPTION_PASSWORD not set. Generated temporary password. CHANGE IMMEDIATELY.");
+            bcrypt::hash(&p, 10)
+        })?;
+    let pharma_pass = std::env::var("PHARMA_PASSWORD")
+        .map(|p| bcrypt::hash(&p, 10))
+        .unwrap_or_else(|_| {
+            let p = generate_password();
+            eprintln!("[WARN] PHARMA_PASSWORD not set. Generated temporary password. CHANGE IMMEDIATELY.");
+            bcrypt::hash(&p, 10)
+        })?;
+    let account_pass = std::env::var("ACCOUNT_PASSWORD")
+        .map(|p| bcrypt::hash(&p, 10))
+        .unwrap_or_else(|_| {
+            let p = generate_password();
+            eprintln!("[WARN] ACCOUNT_PASSWORD not set. Generated temporary password. CHANGE IMMEDIATELY.");
+            bcrypt::hash(&p, 10)
+        })?;
 
     conn.execute("INSERT INTO users (username, password_hash, role, full_name, department) VALUES (?1, ?2, ?3, ?4, ?5)",
-        params!["admin", admin_hash, "Admin", "Administrator", "Administration"])?;
+        params!["admin", admin_pass, "Admin", "Administrator", "Administration"])?;
     conn.execute("INSERT INTO users (username, password_hash, role, full_name, department) VALUES (?1, ?2, ?3, ?4, ?5)",
-        params!["doctor", doctor_hash, "Doctor", "Dr. Smith", "General Medicine"])?;
+        params!["doctor", doctor_pass, "Doctor", "Dr. Smith", "General Medicine"])?;
     conn.execute("INSERT INTO users (username, password_hash, role, full_name, department) VALUES (?1, ?2, ?3, ?4, ?5)",
-        params!["nurse", nurse_hash, "Nurse", "Nurse Johnson", "General Medicine"])?;
+        params!["nurse", nurse_pass, "Nurse", "Nurse Johnson", "General Medicine"])?;
     conn.execute("INSERT INTO users (username, password_hash, role, full_name, department) VALUES (?1, ?2, ?3, ?4, ?5)",
-        params!["reception", reception_hash, "Receptionist", "Reception Desk", "Front Office"])?;
+        params!["reception", reception_pass, "Receptionist", "Reception Desk", "Front Office"])?;
     conn.execute("INSERT INTO users (username, password_hash, role, full_name, department) VALUES (?1, ?2, ?3, ?4, ?5)",
-        params!["pharmacist", pharma_hash, "Pharmacist", "Pharma Store", "Pharmacy"])?;
+        params!["pharmacist", pharma_pass, "Pharmacist", "Pharma Store", "Pharmacy"])?;
     conn.execute("INSERT INTO users (username, password_hash, role, full_name, department) VALUES (?1, ?2, ?3, ?4, ?5)",
-        params!["accountant", account_hash, "Accountant", "Accounts Dept", "Finance"])?;
+        params!["accountant", account_pass, "Accountant", "Accounts Dept", "Finance"])?;
 
     conn.execute("INSERT INTO doctors (staff_code, full_name, specialization, phone, email, qualification, availability_status, shift, experience_years, consultation_fee) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         params!["DR-001", "Dr. Smith", "General Medicine", "+91 9876543210", "dr.smith@medicore.com", "MBBS MD", "Available", "Morning", 10, 500])?;
@@ -178,7 +264,10 @@ fn seed_data(conn: &rusqlite::Connection) -> Result<()> {
     conn.execute("INSERT INTO doctors (staff_code, full_name, specialization, phone, email, qualification, availability_status, shift, experience_years, consultation_fee) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         params!["DR-003", "Dr. Raj", "Orthopedics", "+91 9876543212", "dr.raj@medicore.com", "MBBS MS", "Available", "Evening", 8, 600])?;
 
-    conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('hospital_gstin', '27AAACM4821M1Z5')", [])?;
+    conn.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('hospital_gstin', '27AAACM4821M1Z5')",
+        [],
+    )?;
 
     Ok(())
 }
@@ -652,27 +741,7 @@ CREATE TABLE IF NOT EXISTS attendance (
     UNIQUE(employee_id, attendance_date)
 );
 
-CREATE TABLE IF NOT EXISTS payroll_months (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    month_year      TEXT NOT NULL UNIQUE,
-    start_date      TEXT NOT NULL,
-    end_date        TEXT NOT NULL,
-    status          TEXT NOT NULL DEFAULT 'Open',
-    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
-);
 
-CREATE TABLE IF NOT EXISTS payroll_entries (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    payroll_month_id INTEGER NOT NULL REFERENCES payroll_months(id) ON DELETE CASCADE,
-    employee_id     INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
-    basic_salary    REAL NOT NULL,
-    allowances      REAL NOT NULL DEFAULT 0,
-    deductions      REAL NOT NULL DEFAULT 0,
-    net_salary      REAL NOT NULL,
-    status          TEXT NOT NULL DEFAULT 'Calculated',
-    processed_at    TEXT,
-    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
-);
 
 -- ─────────────────────────────────────────
 -- ASSET MANAGEMENT
@@ -1019,4 +1088,54 @@ CREATE TABLE IF NOT EXISTS visits (
 
 CREATE INDEX IF NOT EXISTS idx_visits_patient ON visits(patient_id);
 CREATE INDEX IF NOT EXISTS idx_visits_status  ON visits(status);
+
+-- ─────────────────────────────────────────
+-- HOUSEKEEPING
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS housekeeping_tasks (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_code       TEXT NOT NULL UNIQUE,
+    task_type       TEXT NOT NULL CHECK(task_type IN ('Cleaning', 'Sanitation', 'Laundry', 'Waste Management', 'Deep Cleaning', 'Inspection')),
+    location        TEXT NOT NULL,
+    ward_id         INTEGER REFERENCES wards(id) ON DELETE SET NULL,
+    priority        TEXT NOT NULL DEFAULT 'Normal' CHECK(priority IN ('Low', 'Normal', 'High', 'Urgent')),
+    status          TEXT NOT NULL DEFAULT 'Pending' CHECK(status IN ('Pending', 'In Progress', 'Completed', 'Verified', 'Cancelled')),
+    assigned_to     INTEGER REFERENCES staff(id) ON DELETE SET NULL,
+    scheduled_date  TEXT NOT NULL,
+    completed_date  TEXT,
+    notes           TEXT,
+    created_by      TEXT,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_housekeeping_status ON housekeeping_tasks(status);
+CREATE INDEX IF NOT EXISTS idx_housekeeping_date ON housekeeping_tasks(scheduled_date);
+
+-- ─────────────────────────────────────────
+-- MAINTENANCE
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS maintenance_requests (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    request_code    TEXT NOT NULL UNIQUE,
+    category        TEXT NOT NULL CHECK(category IN ('Equipment', 'Electrical', 'Plumbing', 'HVAC', 'Furniture', 'IT Infrastructure', 'Building', 'Other')),
+    item_name       TEXT NOT NULL,
+    location        TEXT NOT NULL,
+    ward_id         INTEGER REFERENCES wards(id) ON DELETE SET NULL,
+    priority        TEXT NOT NULL DEFAULT 'Normal' CHECK(priority IN ('Low', 'Normal', 'High', 'Critical')),
+    status          TEXT NOT NULL DEFAULT 'Pending' CHECK(status IN ('Pending', 'Assigned', 'In Progress', 'Completed', 'Cancelled')),
+    description     TEXT NOT NULL,
+    assigned_to     INTEGER REFERENCES staff(id) ON DELETE SET NULL,
+    estimated_cost  REAL,
+    actual_cost     REAL,
+    requested_by    TEXT,
+    requested_date  TEXT NOT NULL,
+    completed_date  TEXT,
+    notes           TEXT,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_maintenance_status ON maintenance_requests(status);
+CREATE INDEX IF NOT EXISTS idx_maintenance_category ON maintenance_requests(category);
 ";

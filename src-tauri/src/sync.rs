@@ -41,6 +41,7 @@ pub async fn sync_to_cloud(pool: &DbPool) -> Result<SyncResult> {
 
     let total = entries.len() as i64;
     let mut errors = 0i64;
+    let mut failed_ids = Vec::new();
 
     if let Some(neon_url) = get_neon_url() {
         match tokio_postgres::connect(&neon_url, tokio_postgres::NoTls).await {
@@ -70,6 +71,7 @@ pub async fn sync_to_cloud(pool: &DbPool) -> Result<SyncResult> {
                         Err(e) => {
                             log::error!("Sync error for {} {}: {}", operation, id, e);
                             errors += 1;
+                            failed_ids.push(*id);
                         }
                     }
                 }
@@ -81,19 +83,25 @@ pub async fn sync_to_cloud(pool: &DbPool) -> Result<SyncResult> {
     }
 
     {
-        let conn = pool.get()?;
+        let mut conn = pool.get()?;
+        let tx = conn.transaction()?;
+        
         for (id, _, _, _, _) in &entries {
-            let _ = conn.execute("UPDATE sync_queue SET synced = 1 WHERE id = ?1", params![id]);
+            if !failed_ids.contains(id) {
+                let _ = tx.execute("UPDATE sync_queue SET synced = 1 WHERE id = ?1", params![id]);
+            }
         }
+        
+        tx.commit()?;
 
         conn.execute(
             "INSERT INTO audit_logs (user_name, action, entity, details)
              VALUES ('System', 'Cloud sync completed', 'sync', ?1)",
-            params![format!("Synced {} records, {} errors", total, errors)],
+            params![format!("Synced {} records, {} errors", total - errors, errors)],
         )?;
     }
 
-    Ok(SyncResult { synced: total, errors })
+    Ok(SyncResult { synced: total - errors, errors })
 }
 
 pub fn get_sync_status(pool: &DbPool) -> Result<SyncStatus> {

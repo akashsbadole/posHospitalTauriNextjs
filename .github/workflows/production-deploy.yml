@@ -1,0 +1,61 @@
+name: Production Deployment
+
+on:
+  push:
+    branches: [main, production]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 18
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - run: npm install
+      - run: npm run test:unit
+      - run: npm run test:integration
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 18
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - run: npm install
+      - run: npm run build
+      - run: npm run tauri:build
+      - uses: actions/upload-artifact@v3
+        with:
+          name: medicore-app
+          path: |
+            ./src-tauri/target/release/bundle/
+            ./out/
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/download-artifact@v3
+        with:
+          name: medicore-app
+      - name: Deploy to production
+        run: |
+          echo "Deploying to production server..."
+          # Add deployment script here
