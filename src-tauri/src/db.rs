@@ -183,9 +183,9 @@ fn run_gst_migrations(conn: &rusqlite::Connection) -> Result<()> {
 }
 
 fn seed_data(conn: &rusqlite::Connection) -> Result<()> {
-    use rusqlite::params;
-    use rand::{thread_rng, Rng};
     use rand::distributions::Alphanumeric;
+    use rand::{thread_rng, Rng};
+    use rusqlite::params;
 
     let count: i64 = conn.query_row("SELECT COUNT(*) FROM users", [], |r| r.get(0))?;
     if count > 0 {
@@ -201,48 +201,13 @@ fn seed_data(conn: &rusqlite::Connection) -> Result<()> {
             .collect()
     };
 
-    let admin_pass = std::env::var("ADMIN_PASSWORD")
-        .map(|p| bcrypt::hash(&p, 10))
-        .unwrap_or_else(|_| {
-            let p = generate_password();
-            eprintln!("[WARN] ADMIN_PASSWORD not set. Generated temporary password. CHANGE IMMEDIATELY.");
-            bcrypt::hash(&p, 10)
-        })?;
-    let doctor_pass = std::env::var("DOCTOR_PASSWORD")
-        .map(|p| bcrypt::hash(&p, 10))
-        .unwrap_or_else(|_| {
-            let p = generate_password();
-            eprintln!("[WARN] DOCTOR_PASSWORD not set. Generated temporary password. CHANGE IMMEDIATELY.");
-            bcrypt::hash(&p, 10)
-        })?;
-    let nurse_pass = std::env::var("NURSE_PASSWORD")
-        .map(|p| bcrypt::hash(&p, 10))
-        .unwrap_or_else(|_| {
-            let p = generate_password();
-            eprintln!("[WARN] NURSE_PASSWORD not set. Generated temporary password. CHANGE IMMEDIATELY.");
-            bcrypt::hash(&p, 10)
-        })?;
-    let reception_pass = std::env::var("RECEPTION_PASSWORD")
-        .map(|p| bcrypt::hash(&p, 10))
-        .unwrap_or_else(|_| {
-            let p = generate_password();
-            eprintln!("[WARN] RECEPTION_PASSWORD not set. Generated temporary password. CHANGE IMMEDIATELY.");
-            bcrypt::hash(&p, 10)
-        })?;
-    let pharma_pass = std::env::var("PHARMA_PASSWORD")
-        .map(|p| bcrypt::hash(&p, 10))
-        .unwrap_or_else(|_| {
-            let p = generate_password();
-            eprintln!("[WARN] PHARMA_PASSWORD not set. Generated temporary password. CHANGE IMMEDIATELY.");
-            bcrypt::hash(&p, 10)
-        })?;
-    let account_pass = std::env::var("ACCOUNT_PASSWORD")
-        .map(|p| bcrypt::hash(&p, 10))
-        .unwrap_or_else(|_| {
-            let p = generate_password();
-            eprintln!("[WARN] ACCOUNT_PASSWORD not set. Generated temporary password. CHANGE IMMEDIATELY.");
-            bcrypt::hash(&p, 10)
-        })?;
+    // Use predefined passwords matching demo login buttons
+    let admin_pass = bcrypt::hash("admin123", 10).unwrap();
+    let doctor_pass = bcrypt::hash("doctor123", 10).unwrap();
+    let nurse_pass = bcrypt::hash("nurse123", 10).unwrap();
+    let reception_pass = bcrypt::hash("reception123", 10).unwrap();
+    let pharma_pass = bcrypt::hash("pharma123", 10).unwrap();
+    let account_pass = bcrypt::hash("account123", 10).unwrap();
 
     conn.execute("INSERT INTO users (username, password_hash, role, full_name, department) VALUES (?1, ?2, ?3, ?4, ?5)",
         params!["admin", admin_pass, "Admin", "Administrator", "Administration"])?;
@@ -263,11 +228,738 @@ fn seed_data(conn: &rusqlite::Connection) -> Result<()> {
         params!["DR-002", "Dr. Sarah", "Cardiology", "+91 9876543211", "dr.sarah@medicore.com", "MBBS DM", "Available", "Morning", 15, 800])?;
     conn.execute("INSERT INTO doctors (staff_code, full_name, specialization, phone, email, qualification, availability_status, shift, experience_years, consultation_fee) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         params!["DR-003", "Dr. Raj", "Orthopedics", "+91 9876543212", "dr.raj@medicore.com", "MBBS MS", "Available", "Evening", 8, 600])?;
+    conn.execute("INSERT INTO doctors (staff_code, full_name, specialization, phone, email, qualification, availability_status, shift, experience_years, consultation_fee) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        params!["DR-004", "Dr. Priya", "Pediatrics", "+91 9876543213", "dr.priya@medicore.com", "MBBS DCH", "Available", "Morning", 12, 550])?;
+    conn.execute("INSERT INTO doctors (staff_code, full_name, specialization, phone, email, qualification, availability_status, shift, experience_years, consultation_fee) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        params!["DR-005", "Dr. Amit", "Neurology", "+91 9876543214", "dr.amit@medicore.com", "MBBS DM", "Available", "Evening", 18, 1000])?;
+    conn.execute("INSERT INTO doctors (staff_code, full_name, specialization, phone, email, qualification, availability_status, shift, experience_years, consultation_fee) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        params!["DR-006", "Dr. Meera", "Dermatology", "+91 9876543215", "dr.meera@medicore.com", "MBBS DDVL", "Available", "Morning", 9, 600])?;
+
+    // Seed Patients
+    let patients = vec![
+        (
+            "PT-0001",
+            "Rajesh Kumar",
+            "1985-03-15",
+            "Male",
+            "+91 9123456789",
+            "rajesh.kumar@email.com",
+            "B+",
+            "123 Main Road, Mumbai",
+            "-wife",
+            "+91 9123456788",
+            "None",
+            "None",
+            "Cardiology",
+        ),
+        (
+            "PT-0002",
+            "Anita Sharma",
+            "1990-07-22",
+            "Female",
+            "+91 9123456790",
+            "anita.sharma@email.com",
+            "O+",
+            "456 Oak Street, Delhi",
+            "Husband",
+            "+91 9123456791",
+            "Penicillin",
+            "Diabetes",
+            "General Medicine",
+        ),
+        (
+            "PT-0003",
+            "Vikram Singh",
+            "1978-11-08",
+            "Male",
+            "+91 9123456792",
+            "vikram.singh@email.com",
+            "A+",
+            "789 Pine Ave, Bangalore",
+            "Wife",
+            "+91 9123456793",
+            "None",
+            "Hypertension",
+            "Cardiology",
+        ),
+        (
+            "PT-0004",
+            "Sunita Devi",
+            "1995-02-14",
+            "Female",
+            "+91 9123456794",
+            "sunita.devi@email.com",
+            "AB+",
+            "321 Elm Road, Chennai",
+            "Father",
+            "+91 9123456795",
+            "Aspirin",
+            "None",
+            "Pediatrics",
+        ),
+        (
+            "PT-0005",
+            "Mohammad Ali",
+            "1982-09-30",
+            "Male",
+            "+91 9123456796",
+            "mohammad.ali@email.com",
+            "B-",
+            "654 Cedar Lane, Hyderabad",
+            "Mother",
+            "+91 9123456797",
+            "None",
+            "Asthma",
+            "General Medicine",
+        ),
+        (
+            "PT-0006",
+            "Pooja Patel",
+            "1988-05-18",
+            "Female",
+            "+91 9123456798",
+            "pooja.patel@email.com",
+            "O-",
+            "987 Birch Street, Pune",
+            "Husband",
+            "+91 9123456799",
+            "Sulfa",
+            "None",
+            "Dermatology",
+        ),
+        (
+            "PT-0007",
+            "Arun Joshi",
+            "1975-12-25",
+            "Male",
+            "+91 9123456800",
+            "arun.joshi@email.com",
+            "A+",
+            "147 Maple Road, Kolkata",
+            "Wife",
+            "+91 9123456801",
+            "None",
+            "Arthritis",
+            "Orthopedics",
+        ),
+        (
+            "PT-0008",
+            "Lakshmi Narayanan",
+            "1992-08-10",
+            "Male",
+            "+91 9123456802",
+            "lakshmi.n@email.com",
+            "AB-",
+            "258 Willow Ave, Coimbatore",
+            "Sister",
+            "+91 9123456803",
+            "None",
+            "Migraine",
+            "Neurology",
+        ),
+        (
+            "PT-0009",
+            "Fatima Begum",
+            "1998-04-05",
+            "Female",
+            "+91 9123456804",
+            "fatima.b@email.com",
+            "O+",
+            "369 Rose Garden, Lucknow",
+            "Father",
+            "+91 9123456805",
+            "None",
+            "None",
+            "General Medicine",
+        ),
+        (
+            "PT-0010",
+            "Suresh Reddy",
+            "1968-06-20",
+            "Male",
+            "+91 9123456806",
+            "suresh.reddy@email.com",
+            "A-",
+            "741 Lotus Street, Chennai",
+            "Wife",
+            "+91 9123456807",
+            "Codeine",
+            "Heart Disease",
+            "Cardiology",
+        ),
+    ];
+    for (
+        code,
+        name,
+        dob,
+        gender,
+        phone,
+        email,
+        bg,
+        addr,
+        econtact,
+        ephone,
+        allergy,
+        chronic,
+        dept,
+    ) in patients
+    {
+        conn.execute("INSERT INTO patients (patient_code, full_name, dob, gender, phone, email, blood_group, address, emergency_contact, emergency_phone, allergies, chronic_conditions, department, assigned_doctor_id, status) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+            params![code, name, dob, gender, phone, email, bg, addr, econtact, ephone, allergy, chronic, dept, 1, "OPD"])?;
+    }
+
+    // Seed Staff
+    let staff = vec![
+        (
+            "STF-001",
+            "Nurse Radhika",
+            "Nurse",
+            "Nursing",
+            "+91 9988776655",
+            "radhika@medicore.com",
+            "Morning",
+            "Active",
+        ),
+        (
+            "STF-002",
+            "Nurse Kavita",
+            "Nurse",
+            "Nursing",
+            "+91 9988776656",
+            "kavita@medicore.com",
+            "Night",
+            "Active",
+        ),
+        (
+            "STF-003",
+            "Receptionist Amit",
+            "Receptionist",
+            "Front Office",
+            "+91 9988776657",
+            "amit.rec@medicore.com",
+            "Morning",
+            "Active",
+        ),
+        (
+            "STF-004",
+            "Pharmacist Suresh",
+            "Pharmacist",
+            "Pharmacy",
+            "+91 9988776658",
+            "suresh.pharma@medicore.com",
+            "Morning",
+            "Active",
+        ),
+        (
+            "STF-005",
+            "Lab Technician Ravi",
+            "Lab Technician",
+            "Laboratory",
+            "+91 9988776659",
+            "ravi.lab@medicore.com",
+            "Morning",
+            "Active",
+        ),
+        (
+            "STF-006",
+            "Ward Boy Ganesh",
+            "Ward Boy",
+            "General Ward",
+            "+91 9988776660",
+            "ganesh@medicore.com",
+            "Night",
+            "Active",
+        ),
+        (
+            "STF-007",
+            "Security Guard Mahesh",
+            "Security",
+            "Security",
+            "+91 9988776661",
+            "mahesh.sec@medicore.com",
+            "Night",
+            "Active",
+        ),
+        (
+            "STF-008",
+            "HR Executive Sunita",
+            "HR Executive",
+            "Human Resources",
+            "+91 9988776662",
+            "sunita.hr@medicore.com",
+            "Morning",
+            "Active",
+        ),
+    ];
+    for (code, name, role, dept, phone, email, shift, status) in staff {
+        conn.execute("INSERT INTO staff (staff_code, full_name, role, department, phone, email, shift, status, join_date, salary) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![code, name, role, dept, phone, email, shift, status, "2023-01-15", 25000.0])?;
+    }
+
+    // Seed Wards and Beds
+    conn.execute("INSERT INTO wards (ward_name, ward_code, ward_type, total_beds, department, base_charge) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params!["General Ward A", "WARD-001", "General", 10, "General Medicine", 500])?;
+    conn.execute("INSERT INTO wards (ward_name, ward_code, ward_type, total_beds, department, base_charge) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params!["General Ward B", "WARD-002", "General", 8, "General Medicine", 500])?;
+    conn.execute("INSERT INTO wards (ward_name, ward_code, ward_type, total_beds, department, base_charge) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params!["ICU", "WARD-003", "ICU", 5, "Critical Care", 2000])?;
+    conn.execute("INSERT INTO wards (ward_name, ward_code, ward_type, total_beds, department, base_charge) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params!["Cardiology Ward", "WARD-004", "Specialized", 6, "Cardiology", 1500])?;
+    conn.execute("INSERT INTO wards (ward_name, ward_code, ward_type, total_beds, department, base_charge) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params!["Pediatrics Ward", "WARD-005", "Specialized", 8, "Pediatrics", 800])?;
+    conn.execute("INSERT INTO wards (ward_name, ward_code, ward_type, total_beds, department, base_charge) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params!["Orthopedics Ward", "WARD-006", "Specialized", 6, "Orthopedics", 1200])?;
+
+    // Seed Beds
+    let beds = vec![
+        (1, "B101", "Occupied"),
+        (1, "B102", "Available"),
+        (1, "B103", "Available"),
+        (1, "B104", "Occupied"),
+        (1, "B105", "Available"),
+        (1, "B106", "Available"),
+        (1, "B107", "Occupied"),
+        (1, "B108", "Available"),
+        (1, "B109", "Available"),
+        (1, "B110", "Available"),
+        (2, "B201", "Available"),
+        (2, "B202", "Occupied"),
+        (2, "B203", "Available"),
+        (2, "B204", "Available"),
+        (2, "B205", "Available"),
+        (2, "B206", "Available"),
+        (2, "B207", "Available"),
+        (2, "B208", "Occupied"),
+        (3, "ICU-1", "Occupied"),
+        (3, "ICU-2", "Available"),
+        (3, "ICU-3", "Occupied"),
+        (3, "ICU-4", "Available"),
+        (3, "ICU-5", "Available"),
+        (4, "CARD-1", "Available"),
+        (4, "CARD-2", "Occupied"),
+        (4, "CARD-3", "Available"),
+        (4, "CARD-4", "Available"),
+        (4, "CARD-5", "Occupied"),
+        (4, "CARD-6", "Available"),
+        (5, "PED-1", "Available"),
+        (5, "PED-2", "Available"),
+        (5, "PED-3", "Occupied"),
+        (5, "PED-4", "Available"),
+        (5, "PED-5", "Available"),
+        (5, "PED-6", "Available"),
+        (5, "PED-7", "Available"),
+        (5, "PED-8", "Available"),
+        (6, "ORTH-1", "Available"),
+        (6, "ORTH-2", "Occupied"),
+        (6, "ORTH-3", "Available"),
+        (6, "ORTH-4", "Occupied"),
+        (6, "ORTH-5", "Available"),
+        (6, "ORTH-6", "Available"),
+    ];
+    for (ward_id, bed_num, status) in beds {
+        conn.execute(
+            "INSERT INTO beds (ward_id, bed_number, status) VALUES (?1, ?2, ?3)",
+            params![ward_id, bed_num, status],
+        )?;
+    }
+
+    // Seed Appointments
+    let appointments = vec![
+        (
+            1,
+            1,
+            "Cardiology",
+            "2025-05-02",
+            "09:00",
+            "General Checkup",
+            "Scheduled",
+        ),
+        (
+            1,
+            2,
+            "Cardiology",
+            "2025-05-02",
+            "10:00",
+            "Follow up",
+            "Completed",
+        ),
+        (
+            2,
+            1,
+            "General Medicine",
+            "2025-05-02",
+            "11:00",
+            "Consultation",
+            "Scheduled",
+        ),
+        (
+            3,
+            3,
+            "Orthopedics",
+            "2025-05-02",
+            "14:00",
+            "Joint Pain",
+            "Scheduled",
+        ),
+        (
+            4,
+            4,
+            "Pediatrics",
+            "2025-05-02",
+            "15:00",
+            "Vaccination",
+            "Completed",
+        ),
+        (
+            5,
+            1,
+            "General Medicine",
+            "2025-05-03",
+            "09:30",
+            "Checkup",
+            "Scheduled",
+        ),
+        (
+            6,
+            6,
+            "Dermatology",
+            "2025-05-03",
+            "10:30",
+            "Skin Issue",
+            "Scheduled",
+        ),
+        (
+            7,
+            3,
+            "Orthopedics",
+            "2025-05-03",
+            "11:30",
+            "Follow up",
+            "Scheduled",
+        ),
+        (
+            8,
+            5,
+            "Neurology",
+            "2025-05-03",
+            "14:00",
+            "Headache",
+            "Scheduled",
+        ),
+        (
+            9,
+            1,
+            "General Medicine",
+            "2025-05-04",
+            "09:00",
+            "Annual Checkup",
+            "Scheduled",
+        ),
+    ];
+    for (patient_id, doctor_id, dept, date, time, appt_type, status) in appointments {
+        conn.execute("INSERT INTO appointments (appointment_code, patient_id, doctor_id, department, appointment_date, appointment_time, type, status) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![format!("APT-{}", thread_rng().sample_iter(&Alphanumeric).take(8).map(char::from).collect::<String>()), patient_id, doctor_id, dept, date, time, appt_type, status])?;
+    }
+
+    // Seed Inventory/Pharmacy Items
+    let inventory = vec![
+        (
+            "MED-001",
+            "Paracetamol 500mg",
+            "Tablet",
+            1000,
+            2.50,
+            "2026-12-31",
+            "Pharmacy",
+        ),
+        (
+            "MED-002",
+            "Amoxicillin 250mg",
+            "Capsule",
+            500,
+            5.00,
+            "2026-06-30",
+            "Pharmacy",
+        ),
+        (
+            "MED-003",
+            "Ibuprofen 400mg",
+            "Tablet",
+            800,
+            3.00,
+            "2027-01-31",
+            "Pharmacy",
+        ),
+        (
+            "MED-004",
+            "Cetirizine 10mg",
+            "Tablet",
+            600,
+            2.00,
+            "2026-11-30",
+            "Pharmacy",
+        ),
+        (
+            "MED-005",
+            "Metformin 500mg",
+            "Tablet",
+            1200,
+            4.00,
+            "2027-06-30",
+            "Pharmacy",
+        ),
+        (
+            "MED-006",
+            "Aspirin 75mg",
+            "Tablet",
+            900,
+            1.50,
+            "2026-09-30",
+            "Pharmacy",
+        ),
+        (
+            "MED-007",
+            "Omeprazole 20mg",
+            "Capsule",
+            450,
+            6.00,
+            "2026-08-31",
+            "Pharmacy",
+        ),
+        (
+            "MED-008",
+            "Azithromycin 500mg",
+            "Tablet",
+            300,
+            8.00,
+            "2026-07-31",
+            "Pharmacy",
+        ),
+        (
+            "MED-009",
+            "Atorvastatin 20mg",
+            "Tablet",
+            700,
+            7.00,
+            "2027-03-31",
+            "Pharmacy",
+        ),
+        (
+            "MED-010",
+            "Pantoprazole 40mg",
+            "Tablet",
+            550,
+            9.00,
+            "2026-10-31",
+            "Pharmacy",
+        ),
+        (
+            "Syr-001",
+            "Disposable Syringe 5ml",
+            "Item",
+            2000,
+            3.00,
+            "2027-12-31",
+            "Medical Supplies",
+        ),
+        (
+            "Syr-002",
+            "Disposable Syringe 10ml",
+            "Item",
+            1500,
+            4.00,
+            "2027-12-31",
+            "Medical Supplies",
+        ),
+        (
+            "Glove-001",
+            "Surgical Gloves (Box)",
+            "Item",
+            200,
+            150.00,
+            "2026-06-30",
+            "Medical Supplies",
+        ),
+        (
+            "Band-001",
+            "Sterile Bandage",
+            "Item",
+            500,
+            25.00,
+            "2027-01-31",
+            "Medical Supplies",
+        ),
+        (
+            "Cot-001",
+            "Cotton Roll",
+            "Item",
+            300,
+            40.00,
+            "2027-06-30",
+            "Medical Supplies",
+        ),
+    ];
+    for (code, name, category, qty, price, expiry, _dept) in inventory {
+        conn.execute("INSERT INTO inventory (item_code, name, category, current_stock, unit_price, expiry_date, unit) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![code, name, category, qty, price, expiry, "pcs"])?;
+    }
+
+    // Seed Lab Tests
+    let lab_tests = vec![
+        (1, 1, "Complete Blood Count", "Hematology", "Ordered", 300),
+        (2, 2, "Lipid Profile", "Biochemistry", "Completed", 500),
+        (
+            3,
+            1,
+            "Blood Glucose Fasting",
+            "Biochemistry",
+            "Ordered",
+            150,
+        ),
+        (4, 4, "Thyroid Profile", "Biochemistry", "Completed", 600),
+        (5, 1, "ECG", "Cardiology", "Completed", 350),
+        (6, 6, "Skin Patch Test", "Dermatology", "Ordered", 200),
+    ];
+    for (patient_id, doctor_id, test_name, category, status, cost) in lab_tests {
+        conn.execute("INSERT INTO lab_tests (lab_code, patient_id, doctor_id, test_name, test_category, ordered_date, status, cost) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![format!("LAB-{}", thread_rng().sample_iter(&Alphanumeric).take(8).map(char::from).collect::<String>()), patient_id, doctor_id, test_name, category, "2025-05-01", status, cost])?;
+    }
+
+    // Seed Prescriptions
+    conn.execute("INSERT INTO prescriptions (rx_code, patient_id, doctor_id, issue_date, valid_until, status, diagnosis) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params!["RX-001", 1, 1, "2025-05-01", "2025-05-08", "Active", "Common Cold"])?;
+    conn.execute("INSERT INTO prescription_drugs (prescription_id, drug_name, dosage, frequency, duration_days, route) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![1, "Paracetamol 500mg", "1 tablet", "3 times a day", 5, "Oral"])?;
+    conn.execute("INSERT INTO prescription_drugs (prescription_id, drug_name, dosage, frequency, duration_days, route) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![1, "Cetirizine 10mg", "1 tablet", "once at night", 5, "Oral"])?;
+
+    conn.execute("INSERT INTO prescriptions (rx_code, patient_id, doctor_id, issue_date, valid_until, status, diagnosis) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params!["RX-002", 2, 2, "2025-05-01", "2025-05-15", "Active", "Hypertension"])?;
+    conn.execute("INSERT INTO prescription_drugs (prescription_id, drug_name, dosage, frequency, duration_days, route) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![2, "Amlodipine 5mg", "1 tablet", "once daily", 14, "Oral"])?;
+    conn.execute("INSERT INTO prescription_drugs (prescription_id, drug_name, dosage, frequency, duration_days, route) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![2, "Atorvastatin 20mg", "1 tablet", "once at night", 14, "Oral"])?;
+
+    // Seed Invoices
+    conn.execute("INSERT INTO invoices (invoice_code, patient_id, issue_date, due_date, status, subtotal, discount, tax, total, paid_amount, balance) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+        params!["INV-001", 1, "2025-05-01", "2025-05-15", "Pending", 1000, 0, 180, 1180, 0, 1180])?;
+    conn.execute("INSERT INTO invoice_items (invoice_id, description, category, quantity, unit_price, total) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![1, "Consultation Fee - Dr. Smith", "Consultation", 1, 500, 500])?;
+    conn.execute("INSERT INTO invoice_items (invoice_id, description, category, quantity, unit_price, total) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![1, "Blood Test - CBC", "Lab", 1, 300, 300])?;
+    conn.execute("INSERT INTO invoice_items (invoice_id, description, category, quantity, unit_price, total) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![1, "Medicines", "Pharmacy", 1, 200, 200])?;
+
+    conn.execute("INSERT INTO invoices (invoice_code, patient_id, issue_date, due_date, status, subtotal, discount, tax, total, paid_amount, balance) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+        params!["INV-002", 2, "2025-05-01", "2025-05-15", "Paid", 2000, 100, 342, 2242, 2242, 0])?;
+    conn.execute("INSERT INTO invoice_items (invoice_id, description, category, quantity, unit_price, total) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![2, "ECG Test", "Lab", 1, 350, 350])?;
+    conn.execute("INSERT INTO invoice_items (invoice_id, description, category, quantity, unit_price, total) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![2, "Cardiac Profile", "Lab", 1, 1200, 1200])?;
+    conn.execute("INSERT INTO invoice_items (invoice_id, description, category, quantity, unit_price, total) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![2, "Medications", "Pharmacy", 1, 450, 450])?;
+
+    // Seed Insurance Claims
+    conn.execute("INSERT INTO insurance_claims (claim_code, patient_id, invoice_id, provider_name, policy_number, claim_amount, approved_amount, status, submitted_date) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        params!["CLM-001", 1, 1, "Star Health Insurance", "POL-123456", 1180, 1000, "Submitted", "2025-05-02"])?;
+    conn.execute("INSERT INTO insurance_claims (claim_code, patient_id, invoice_id, provider_name, policy_number, claim_amount, approved_amount, status, submitted_date) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        params!["CLM-002", 2, 2, "Max Bupa Insurance", "POL-789012", 2242, 2000, "Approved", "2025-05-02"])?;
 
     conn.execute(
         "INSERT OR IGNORE INTO settings (key, value) VALUES ('hospital_gstin', '27AAACM4821M1Z5')",
         [],
     )?;
+
+    // Seed Role Permissions
+    let modules = vec![
+        "Dashboard",
+        "Patients",
+        "Appointments",
+        "Prescriptions",
+        "Lab",
+        "Wards",
+        "Beds",
+        "Billing",
+        "Insurance",
+        "Inventory",
+        "Staff",
+        "Doctors",
+        "Settings",
+        "Audit",
+        "HR",
+        "Payroll",
+        "Messages",
+        "Assets",
+        "BloodBank",
+        "Ambulance",
+        "Emergency",
+        "OperationTheatre",
+        "Discharge",
+        "OPDQueue",
+        "Feedback",
+        "Support",
+        "Housekeeping",
+        "Maintenance",
+    ];
+
+    // Admin gets full access to everything
+    for module in &modules {
+        conn.execute("INSERT OR IGNORE INTO role_permissions (role, module, can_view, can_create, can_edit, can_delete) VALUES (?1, ?2, 1, 1, 1, 1)",
+            params!["Admin", module])?;
+    }
+
+    // Doctor gets view, create, edit but no delete
+    for module in &modules {
+        conn.execute("INSERT OR IGNORE INTO role_permissions (role, module, can_view, can_create, can_edit, can_delete) VALUES (?1, ?2, 1, 1, 1, 0)",
+            params!["Doctor", module])?;
+    }
+
+    // Nurse gets view and create for clinical modules
+    let nurse_modules = vec![
+        "Dashboard",
+        "Patients",
+        "Wards",
+        "Beds",
+        "Prescriptions",
+        "Billing",
+    ];
+    for module in &nurse_modules {
+        conn.execute("INSERT OR IGNORE INTO role_permissions (role, module, can_view, can_create, can_edit, can_delete) VALUES (?1, ?2, 1, 1, 0, 0)",
+            params!["Nurse", module])?;
+    }
+
+    // Receptionist gets view and create for appointments and patients
+    let reception_modules = vec![
+        "Dashboard",
+        "Patients",
+        "Appointments",
+        "Billing",
+        "Inventory",
+    ];
+    for module in &reception_modules {
+        conn.execute("INSERT OR IGNORE INTO role_permissions (role, module, can_view, can_create, can_edit, can_delete) VALUES (?1, ?2, 1, 1, 0, 0)",
+            params!["Receptionist", module])?;
+    }
+
+    // Pharmacist gets full access to inventory and prescriptions
+    let pharma_modules = vec![
+        "Dashboard",
+        "Patients",
+        "Inventory",
+        "Prescriptions",
+        "Billing",
+    ];
+    for module in &pharma_modules {
+        conn.execute("INSERT OR IGNORE INTO role_permissions (role, module, can_view, can_create, can_edit, can_delete) VALUES (?1, ?2, 1, 1, 1, 0)",
+            params!["Pharmacist", module])?;
+    }
+
+    // Accountant gets access to billing, insurance, revenue
+    let account_modules = vec!["Dashboard", "Patients", "Billing", "Insurance", "Inventory"];
+    for module in &account_modules {
+        conn.execute("INSERT OR IGNORE INTO role_permissions (role, module, can_view, can_create, can_edit, can_delete) VALUES (?1, ?2, 1, 1, 1, 0)",
+            params!["Accountant", module])?;
+    }
 
     Ok(())
 }

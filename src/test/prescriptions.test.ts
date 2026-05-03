@@ -124,7 +124,7 @@ describe('Prescription CRUD Operations', () => {
 
       await tauri.refillPrescription(1, 1);
 
-      expect(mockInvoke).toHaveBeenCalledWith('refill_prescription', { id: 1, drug_id: 1 });
+      expect(mockInvoke).toHaveBeenCalledWith('refill_prescription', { rx_id: 1, drug_idx: 1 });
     });
 
     it('should handle refill failure', async () => {

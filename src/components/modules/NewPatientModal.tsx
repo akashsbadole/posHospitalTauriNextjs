@@ -74,18 +74,25 @@ export function NewPatientModal({ open, onClose }: { open: boolean; onClose: () 
 
   const mut = useMutation({
     mutationFn: async (d: F) => {
-      const patient = await createPatient({
-        ...d,
-        assigned_doctor_id: d.assigned_doctor_id || undefined,
+      const patientData = {
+        full_name: d.full_name,
+        dob: d.dob,
+        gender: d.gender,
+        phone: d.phone,
         email: d.email || undefined,
+        blood_group: d.blood_group,
         address: d.address || undefined,
-        allergies: d.allergies || undefined,
-        chronic_conditions: d.chronic_conditions || undefined,
         emergency_contact: d.emergency_contact || undefined,
         emergency_phone: d.emergency_phone || undefined,
+        allergies: d.allergies || undefined,
+        chronic_conditions: d.chronic_conditions || undefined,
+        department: d.department,
+        assigned_doctor_id: d.assigned_doctor_id || undefined,
+        status: d.status,
         insurance_provider: d.insurance_provider || undefined,
         insurance_number: d.insurance_number || undefined,
-      } as any);
+      };
+      const patient = await createPatient(patientData as any);
 
       if (d.start_visit && d.assigned_doctor_id) {
         const visit = await createVisit({
@@ -119,12 +126,9 @@ export function NewPatientModal({ open, onClose }: { open: boolean; onClose: () 
       reset(); onClose();
     },
     onError: (error: unknown) => {
-    if (error instanceof Error) {
-      toast.error(error.message)
-    } else {
-      toast.error("Failed to register patient - unknown error occurred")
-    }
-  },
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error(message);
+    },
   });
 
   if (!open) return null;

@@ -6,7 +6,7 @@ import { useAppStore } from "@/store";
 const PUBLIC_PATHS = ["/login", "/api/auth"];
 
 const ROLE_PERMISSIONS: Record<string, string[]> = {
-  Admin: ["/dashboard", "/patients", "/appointments", "/prescriptions", "/lab", "/wards", "/staff", "/pharmacy", "/billing", "/insurance", "/analytics", "/audit", "/settings", "/ot", "/emergency", "/blood-bank", "/ambulance", "/expenses", "/hr", "/assets", "/revenue", "/discharge", "/opd-queue", "/messages", "/feedback"],
+  Admin: ["/dashboard", "/patients", "/appointments", "/prescriptions", "/lab", "/wards", "/staff", "/pharmacy", "/billing", "/insurance", "/analytics", "/audit", "/settings", "/ot", "/emergency", "/blood-bank", "/ambulance", "/expenses", "/hr", "/assets", "/revenue", "/discharge", "/opd-queue", "/messages", "/feedback", "/support"],
   Doctor: ["/dashboard", "/patients", "/appointments", "/prescriptions", "/lab", "/wards", "/ot", "/emergency", "/discharge", "/opd-queue", "/feedback"],
   Nurse: ["/dashboard", "/patients", "/wards", "/lab"],
   Receptionist: ["/dashboard", "/patients", "/appointments", "/billing"],

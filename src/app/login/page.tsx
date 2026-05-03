@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAppStore } from "@/store";
-import { loginUser, createUser } from "@/lib/tauri";
+import { loginUser, createUser, getRolePermissions } from "@/lib/tauri";
 import { Activity, Lock, User, Eye, EyeOff, Shield, Stethoscope, Users, FlaskConical, Wallet } from "lucide-react";
 
 const DEMO_USERS = [
@@ -20,7 +20,7 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-  const { setAuthUser, setIsAuthenticated, isAuthenticated, hydrated } = useAppStore();
+  const { setAuthUser, setIsAuthenticated, setPermissions, isAuthenticated, hydrated } = useAppStore();
 
   useEffect(() => {
     if (hydrated && isAuthenticated) {
@@ -49,6 +49,10 @@ export default function LoginPage() {
       const user = await loginUser(username, password);
       setAuthUser(user);
       setIsAuthenticated(true);
+      
+      const perms = await getRolePermissions(user.role);
+      setPermissions(perms);
+      
       router.push("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err) || "Invalid credentials");
@@ -66,6 +70,10 @@ export default function LoginPage() {
       const user = await loginUser(userDef.username, userDef.password);
       setAuthUser(user);
       setIsAuthenticated(true);
+      
+      const perms = await getRolePermissions(user.role);
+      setPermissions(perms);
+      
       router.push("/dashboard");
     } catch {
       setError("Demo login failed. Please use the form below.");

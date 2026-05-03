@@ -12,6 +12,7 @@ import type { SupportTicket, Patient, User as AppUser } from "@/types";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/modules/ConfirmDialog";
 import { format } from "date-fns";
+import { useAppStore } from "@/store";
 
 export default function SupportPage() {
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
@@ -23,6 +24,7 @@ export default function SupportPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [staff, setStaff] = useState<AppUser[]>([]);
+  const { isAuthenticated, hydrated } = useAppStore();
 
   // New ticket form
   const [newTicket, setNewTicket] = useState({
@@ -35,8 +37,9 @@ export default function SupportPage() {
   });
 
   useEffect(() => {
+    if (!hydrated || !isAuthenticated) return;
     fetchData();
-  }, []);
+  }, [hydrated, isAuthenticated]);
 
   const fetchData = async () => {
     try {

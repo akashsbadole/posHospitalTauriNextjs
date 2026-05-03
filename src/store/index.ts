@@ -1,7 +1,7 @@
 "use client";
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import type { Doctor, DashboardStats, User } from "@/types";
+import type { DashboardStats, User, RolePermission } from "@/types";
 
 interface Notification {
   id: string; type: "info"|"success"|"warning"|"error";
@@ -13,10 +13,10 @@ interface AppState {
   setCurrentUser: (u: User | null) => void;
   authUser: User | null;
   setAuthUser: (u: User | null) => void;
+  permissions: RolePermission[];
+  setPermissions: (p: RolePermission[]) => void;
   isAuthenticated: boolean;
   setIsAuthenticated: (v: boolean) => void;
-  sidebarCollapsed: boolean;
-  toggleSidebar: () => void;
   activeModule: string;
   setActiveModule: (m: string) => void;
   dashboardStats: DashboardStats | null;
@@ -31,6 +31,8 @@ interface AppState {
   setPendingSyncCount: (n: number) => void;
   hydrated: boolean;
   setHydrated: (v: boolean) => void;
+  sidebarCollapsed: boolean;
+  toggleSidebar: () => void;
 }
 
 const storage = {
@@ -57,6 +59,8 @@ export const useAppStore = create<AppState>()(
       setCurrentUser: (u) => set({ currentUser: u }),
       authUser: null,
       setAuthUser: (u) => set({ authUser: u }),
+      permissions: [],
+      setPermissions: (p) => set({ permissions: p }),
       isAuthenticated: false,
       setIsAuthenticated: (v) => set({ isAuthenticated: v }),
       sidebarCollapsed: false,
@@ -79,11 +83,11 @@ export const useAppStore = create<AppState>()(
     {
       name: "medicore-store",
       storage: createJSONStorage(() => storage),
-      partialize: (s) => ({ 
-        authUser: s.authUser, 
-        isAuthenticated: s.isAuthenticated, 
-        sidebarCollapsed: s.sidebarCollapsed, 
-        lastSync: s.lastSync 
+      partialize: (s) => ({
+        authUser: s.authUser,
+        isAuthenticated: s.isAuthenticated,
+        sidebarCollapsed: s.sidebarCollapsed,
+        lastSync: s.lastSync
       }),
       onRehydrateStorage: () => (state) => {
         state?.setHydrated(true);
@@ -91,3 +95,20 @@ export const useAppStore = create<AppState>()(
     }
   )
 );
+
+export function checkPermission(
+  permissions: RolePermission[],
+  role: string,
+  module: string,
+  action: "view" | "create" | "edit" | "delete"
+): boolean {
+  if (role === "Admin") return true;
+  const found = permissions.find(p => p.role === role && p.module === module);
+  if (!found) return false;
+  switch (action) {
+    case "view": return found.can_view;
+    case "create": return found.can_create;
+    case "edit": return found.can_edit;
+    case "delete": return found.can_delete;
+  }
+}
